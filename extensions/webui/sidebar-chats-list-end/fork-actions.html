@@ -1,0 +1,91 @@
+<html>
+<head>
+  <script type="module">
+    import { store as forkStore } from "/usr/plugins/langfuse-observability/webui/fork-store.js";
+    import { store as splitStore } from "/usr/plugins/langfuse-observability/webui/split-view-store.js";
+  </script>
+</head>
+
+<body>
+  <div x-data="{ compareTarget: '' }">
+    <template x-if="$store.forkActions && $store.chats?.selected">
+      <div class="fork-actions-container">
+        <div class="fork-actions-row">
+          <button class="fork-btn"
+            :disabled="$store.forkActions.forking"
+            @click="$store.forkActions.forkCurrentChat()"
+            title="Fork this chat to explore a different path">
+            <span class="material-symbols-outlined">call_split</span>
+            <span x-text="$store.forkActions.forking ? 'Forking...' : 'Fork Chat'"></span>
+          </button>
+          <button class="fork-btn"
+            :disabled="$store.forkActions.forking"
+            @click="$store.forkActions.forkAndCompare()"
+            title="Fork and open split comparison">
+            <span class="material-symbols-outlined">compare</span>
+            <span>Fork &amp; Compare</span>
+          </button>
+        </div>
+        <template x-if="$store.forkActions.error">
+          <div class="fork-error" x-text="$store.forkActions.error"></div>
+        </template>
+      </div>
+    </template>
+
+    <!-- Split view overlay (position:fixed, renders on top of everything) -->
+    <x-component path="/usr/plugins/langfuse-observability/webui/split-view.html"></x-component>
+  </div>
+
+  <style>
+    .fork-actions-container {
+      padding: 0.5rem 0;
+      border-top: 1px solid var(--color-border);
+      margin-top: 0.25rem;
+    }
+
+    .fork-actions-row {
+      display: flex;
+      gap: 0.25rem;
+    }
+
+    .fork-btn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.25rem;
+      padding: 0.35rem 0.5rem;
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      background: var(--color-panel);
+      color: var(--color-text);
+      font-size: var(--font-size-small);
+      cursor: pointer;
+      opacity: 0.7;
+      transition: all var(--transition-speed) ease-in-out;
+      white-space: nowrap;
+    }
+
+    .fork-btn:hover:not(:disabled) {
+      opacity: 1;
+      background: var(--color-background-hover);
+    }
+
+    .fork-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .fork-btn .material-symbols-outlined {
+      font-size: 16px;
+    }
+
+    .fork-error {
+      padding: 0.25rem 0.5rem;
+      margin-top: 0.25rem;
+      font-size: 0.75rem;
+      color: var(--color-error, #dc3232);
+    }
+  </style>
+</body>
+</html>

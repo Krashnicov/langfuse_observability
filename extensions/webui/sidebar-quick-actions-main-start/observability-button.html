@@ -1,0 +1,26 @@
+<html>
+<head>
+  <script type="module">
+    import { store as traceStore } from "/usr/plugins/langfuse-observability/webui/trace-viewer-store.js";
+  </script>
+</head>
+
+<body>
+  <div x-data="{
+    openTraceViewer() {
+      // Check if there's a pending trace from the last response
+      const pending = globalThis._pendingTrace;
+      if (pending) {
+        $store.traceViewer.loadTrace(pending.id, pending.url);
+      }
+      openModal('/usr/plugins/langfuse-observability/webui/trace-viewer.html');
+    }
+  }">
+    <template x-if="$store.traceViewer">
+      <button class="config-button" @click="openTraceViewer()" title="Trace Viewer">
+        <span class="material-symbols-outlined">monitoring</span>
+      </button>
+    </template>
+  </div>
+</body>
+</html>
