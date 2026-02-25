@@ -1,0 +1,5 @@
+langfuse_enabled: false
+langfuse_public_key: ""
+langfuse_secret_key: ""
+langfuse_host: "https://cloud.langfuse.com"
+langfuse_sample_rate: 1.0
