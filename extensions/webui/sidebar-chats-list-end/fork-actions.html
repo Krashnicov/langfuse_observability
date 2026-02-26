@@ -12,37 +12,14 @@
     }
   </script>
   <style>
-    /* Per-chat fork icon — sits next to the close button */
-    .lf-fork-icon {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 20px;
-      height: 20px;
-      padding: 0;
-      margin: 0;
-      border: none;
-      border-radius: 3px;
-      background: transparent;
-      color: var(--color-text, #ccc);
-      cursor: pointer;
-      opacity: 0;
-      transition: opacity 0.15s ease;
-      flex-shrink: 0;
-    }
-
-    .lf-fork-icon .material-symbols-outlined {
-      font-size: 14px;
-    }
-
-    /* Show on hover of the chat list item */
-    li:hover .lf-fork-icon {
-      opacity: 0.5;
-    }
-
-    .lf-fork-icon:hover {
-      opacity: 1 !important;
-      background: var(--color-background-hover, rgba(255,255,255,0.1));
+    /*
+     * The fork button uses the same classes as the close button
+     * (btn-icon-action chat-list-action-btn) so it inherits Agent Zero's
+     * hover show/hide behavior automatically. This additional rule ensures
+     * the fork icon is visually distinct.
+     */
+    .lf-fork-btn .material-symbols-outlined {
+      color: var(--color-accent, #89b4fa);
     }
   </style>
 </head>

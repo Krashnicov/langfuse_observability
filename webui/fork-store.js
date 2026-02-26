@@ -37,9 +37,14 @@ const model = {
         return null;
       }
 
-      // Refresh the chat list so the fork appears
+      // Refresh the chat list so the fork appears in the sidebar.
+      // Try common refresh methods on the chats store.
       if (chatsStore?.loadContexts) {
         await chatsStore.loadContexts();
+      } else if (chatsStore?.refreshContexts) {
+        await chatsStore.refreshContexts();
+      } else if (chatsStore?.load) {
+        await chatsStore.load();
       }
 
       return result.new_context_id;
