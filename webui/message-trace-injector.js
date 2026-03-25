@@ -5,7 +5,7 @@
  * the nearest trace_id in kvps.
  */
 
-const API_PREFIX = "/plugins/a0_community_plugins__langfuse_observability";
+const API_PREFIX = "plugins/langfuse_observability";
 let observer = null;
 let logCache = null;
 let cachedContextId = null;
@@ -75,7 +75,7 @@ async function openTraceForArea(actionArea) {
     traceViewer.loadTrace("", "");
     traceViewer.error = "No logs found for this chat";
     globalThis.openModal(
-      "/usr/plugins/a0_community_plugins__langfuse_observability/webui/trace-viewer.html",
+      "/usr/plugins/langfuse_observability/webui/trace-viewer.html",
     );
     return;
   }
@@ -86,7 +86,7 @@ async function openTraceForArea(actionArea) {
     traceViewer.loadTrace("", "");
     traceViewer.error = "No traces found (tracing may not be enabled)";
     globalThis.openModal(
-      "/usr/plugins/a0_community_plugins__langfuse_observability/webui/trace-viewer.html",
+      "/usr/plugins/langfuse_observability/webui/trace-viewer.html",
     );
     return;
   }
@@ -137,7 +137,7 @@ async function openTraceForArea(actionArea) {
 
   traceViewer.loadTrace(traceId, traceUrl);
   globalThis.openModal(
-    "/usr/plugins/a0_community_plugins__langfuse_observability/webui/trace-viewer.html",
+    "/usr/plugins/langfuse_observability/webui/trace-viewer.html",
   );
 }
 

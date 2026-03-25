@@ -8,7 +8,7 @@ if _PLUGIN_ROOT not in sys.path:
 from helpers.extension import Extension
 from langfuse_helpers.langfuse_helper import get_langfuse_client, should_sample
 from langfuse import LangfuseOtelSpanAttributes
-from agents import Agent, LoopData
+from agent import Agent, LoopData
 
 
 class LangfuseTraceStart(Extension):

@@ -2,9 +2,8 @@ import json
 import os
 
 from helpers.api import ApiHandler, Input, Output, Request, Response
-from helpers import files, settings
-import models
-from models import ModelConfig, ModelType
+from helpers import files
+from plugins._model_config.helpers.model_config import build_utility_model
 
 _PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -37,31 +36,7 @@ class PromptRefine(ApiHandler):
 
         # Use the utility model (cheaper/faster) for refinement
         try:
-            set = settings.get_settings()
-            provider = set.get("util_model_provider", "")
-            name = set.get("util_model_name", "")
-
-            if not provider or not name:
-                return {"success": False, "error": "Utility model not configured"}
-
-            model_conf = ModelConfig(
-                type=ModelType.CHAT,
-                provider=provider,
-                name=name,
-                api_base=set.get("util_model_api_base", ""),
-                ctx_length=set.get("util_model_ctx_length", 0),
-                limit_requests=set.get("util_model_rl_requests", 0),
-                limit_input=set.get("util_model_rl_input", 0),
-                limit_output=set.get("util_model_rl_output", 0),
-                kwargs=set.get("util_model_kwargs", {}),
-            )
-
-            llm = models.get_chat_model(
-                provider=provider,
-                name=name,
-                model_config=model_conf,
-                **model_conf.build_kwargs(),
-            )
+            llm = build_utility_model()
 
             response, _reasoning = await llm.unified_call(
                 system_message=refiner_prompt,

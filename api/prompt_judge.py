@@ -1,9 +1,9 @@
 import json
 import os
 
-import models
 from helpers.api import ApiHandler, Input, Output, Request, Response
-from helpers import files, settings
+from helpers import files
+from plugins._model_config.helpers.model_config import build_utility_model
 
 _PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -44,33 +44,12 @@ class PromptJudge(ApiHandler):
         )
 
         try:
-            from langchain_core.messages import SystemMessage, HumanMessage
+            llm = build_utility_model()
 
-            set = settings.get_settings()
-
-            # Use the utility model for judging (cheaper, deterministic)
-            provider = set.get("util_model_provider", "")
-            model_name = set.get("util_model_name", "")
-            api_base = set.get("util_model_api_base", "")
-
-            kwargs = {}
-            if api_base:
-                kwargs["api_base"] = api_base
-            kwargs.update(set.get("util_model_kwargs", {}))
-
-            llm = models.get_chat_model(
-                provider=provider,
-                name=model_name,
-                **kwargs,
+            content, _reasoning = await llm.unified_call(
+                system_message=judge_prompt,
+                user_message=judge_input,
             )
-
-            messages = [
-                SystemMessage(content=judge_prompt),
-                HumanMessage(content=judge_input),
-            ]
-
-            result = await llm.ainvoke(messages)
-            content = result.content if hasattr(result, "content") else str(result)
 
             # Parse JSON — strip markdown code fences if present
             content = content.strip()

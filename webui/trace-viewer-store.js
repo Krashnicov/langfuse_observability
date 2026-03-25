@@ -1,6 +1,6 @@
 import { createStore } from "/js/AlpineStore.js";
 // Pre-register the promptLab store so it exists before openPromptLab is first called
-import "/usr/plugins/a0_community_plugins__langfuse_observability/webui/prompt-lab-store.js";
+import "/usr/plugins/langfuse_observability/webui/prompt-lab-store.js";
 
 let mermaidLoaded = false;
 let mermaidModule = null;
@@ -82,7 +82,7 @@ const model = {
     }
 
     try {
-      const resp = await globalThis.fetchApi("/plugins/a0_community_plugins__langfuse_observability/chat_logs", {
+      const resp = await globalThis.fetchApi("plugins/langfuse_observability/chat_logs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ context_id: contextId, log_from: 0 }),
@@ -150,7 +150,7 @@ const model = {
     this.selectedObsId = null;
 
     try {
-      const resp = await globalThis.fetchApi("/plugins/a0_community_plugins__langfuse_observability/langfuse_trace", {
+      const resp = await globalThis.fetchApi("plugins/langfuse_observability/langfuse_trace", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ trace_id: traceId }),
@@ -255,7 +255,7 @@ const model = {
       });
     }
 
-    globalThis.openModal("/usr/plugins/a0_community_plugins__langfuse_observability/webui/prompt-lab.html");
+    globalThis.openModal("/usr/plugins/langfuse_observability/webui/prompt-lab.html");
   },
 
   getObservation(obsId) {
@@ -345,7 +345,7 @@ function buildTree(observations) {
   // Sort children by start_time
   for (const node of Object.values(byId)) {
     node.children.sort(
-      (a, b) => new Date(a.start_time || 0) - new Date(b.start_time || 0),
+      (a, b) => new Date(a.start_time || "").getTime() - new Date(b.start_time || "").getTime(),
     );
   }
 

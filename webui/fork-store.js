@@ -1,7 +1,7 @@
 import { createStore, getStore } from "/js/AlpineStore.js";
 import { callJsonApi } from "/js/api.js";
 
-const API = "/plugins/a0_community_plugins__langfuse_observability";
+const API = "plugins/langfuse_observability";
 
 const model = {
   forking: false,

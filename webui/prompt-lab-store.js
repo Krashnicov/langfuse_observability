@@ -2,7 +2,7 @@ import { createStore } from "/js/AlpineStore.js";
 import { callJsonApi } from "/js/api.js";
 
 // Plugin API prefix
-const API = "/plugins/a0_community_plugins__langfuse_observability";
+const API = "plugins/langfuse_observability";
 const closeModal = /** @type {(modalPath?: string | null) => Promise<unknown> | unknown} */ (
   globalThis.closeModal
 );
@@ -197,7 +197,7 @@ const model = {
       chatsStore.selectChat(this.testForkedContextId);
     }
     closeModal(
-      "/usr/plugins/a0_community_plugins__langfuse_observability/webui/prompt-lab.html",
+      "/usr/plugins/langfuse_observability/webui/prompt-lab.html",
     );
   },
 
@@ -213,7 +213,7 @@ const model = {
     }
     // Close the prompt lab modal, then open split view
     closeModal(
-      "/usr/plugins/a0_community_plugins__langfuse_observability/webui/prompt-lab.html",
+      "/usr/plugins/langfuse_observability/webui/prompt-lab.html",
     );
     splitView.openSplit(
       this.sourceContextId,
