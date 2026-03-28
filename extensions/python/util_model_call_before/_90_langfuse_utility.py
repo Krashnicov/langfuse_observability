@@ -55,6 +55,7 @@ class LangfuseUtilityGeneration(Extension):
             input=prompt_text or None,
             metadata={
                 "agent_number": self.agent.number,
+                "agent_profile": self.agent.config.profile,
                 "call_type": "utility",
             },
         )

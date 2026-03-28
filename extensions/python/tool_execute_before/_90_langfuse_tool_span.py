@@ -21,7 +21,7 @@ class LangfuseToolSpanStart(Extension):
 
         span = parent.start_observation(
             name=f"tool-{tool_name}" if tool_name else "tool-unknown",
-            as_type="span",
+            as_type="tool",
             input=args_summary,
             metadata={"tool_name": tool_name},
         )

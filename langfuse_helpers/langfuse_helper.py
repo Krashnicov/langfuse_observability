@@ -85,6 +85,10 @@ def get_langfuse_config() -> dict[str, Any]:
     host = config.get("langfuse_host") or os.getenv("LANGFUSE_HOST", "https://us.cloud.langfuse.com")
     enabled = config.get("langfuse_enabled", False)
     sample_rate = float(config.get("langfuse_sample_rate", 1.0))
+    service_name = config.get("langfuse_service_name") or os.getenv("OTEL_SERVICE_NAME", "agent-zero")
+    # Default environment to hostname so multiple instances are distinguishable
+    environment = config.get("langfuse_environment") or os.getenv("LANGFUSE_ENVIRONMENT", "") or os.getenv("HOSTNAME", "")
+    release = config.get("langfuse_release") or os.getenv("LANGFUSE_RELEASE", "")
 
     # Auto-enable if keys are set via env vars but toggle is off
     if not enabled and public_key and secret_key:
@@ -96,6 +100,9 @@ def get_langfuse_config() -> dict[str, Any]:
         "secret_key": secret_key,
         "host": host,
         "sample_rate": sample_rate,
+        "service_name": service_name,
+        "environment": environment,
+        "release": release,
     }
 
 
@@ -119,11 +126,20 @@ def get_langfuse_client():
     try:
         from langfuse import Langfuse
 
-        _client = Langfuse(
-            public_key=config["public_key"],
-            secret_key=config["secret_key"],
-            host=config["host"],
-        )
+        # Set OTel service name so resourceAttributes.service.name is populated
+        os.environ["OTEL_SERVICE_NAME"] = config["service_name"]
+
+        client_kwargs: dict[str, Any] = {
+            "public_key": config["public_key"],
+            "secret_key": config["secret_key"],
+            "host": config["host"],
+        }
+        if config.get("environment"):
+            client_kwargs["environment"] = config["environment"]
+        if config.get("release"):
+            client_kwargs["release"] = config["release"]
+
+        _client = Langfuse(**client_kwargs)
         _client_initialized = True
         logger.info("Langfuse client initialized successfully")
         return _client

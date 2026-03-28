@@ -14,7 +14,7 @@ class LangfuseIterationStart(Extension):
 
         span = trace.start_observation(
             name=f"iteration-{loop_data.iteration}",
-            as_type="span",
+            as_type="chain",
             metadata={"iteration": loop_data.iteration},
         )
         loop_data.params_temporary["lf_iteration_span"] = span

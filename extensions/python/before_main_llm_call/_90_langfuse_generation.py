@@ -76,6 +76,7 @@ class LangfuseGenerationStart(Extension):
             input=prompt_text or None,
             metadata={
                 "agent_number": self.agent.number,
+                "agent_profile": self.agent.config.profile,
                 "iteration": loop_data.iteration,
             },
         )

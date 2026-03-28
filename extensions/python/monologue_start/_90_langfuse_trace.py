@@ -38,8 +38,11 @@ class LangfuseTraceStart(Extension):
             if parent_span:
                 span = parent_span.start_observation(
                     name=f"agent-{agent.number}-monologue",
-                    as_type="span",
-                    metadata={"agent_number": agent.number},
+                    as_type="agent",
+                    metadata={
+                        "agent_number": agent.number,
+                        "agent_profile": agent.config.profile,
+                    },
                 )
                 loop_data.params_persistent["lf_trace"] = span
                 loop_data.params_persistent["lf_root_trace"] = (
@@ -55,9 +58,12 @@ class LangfuseTraceStart(Extension):
 
         root_span = client.start_observation(
             name=f"agent-{agent.number}-monologue",
-            as_type="span",
+            as_type="agent",
             input=user_msg,
-            metadata={"agent_number": agent.number},
+            metadata={
+                "agent_number": agent.number,
+                "agent_profile": agent.config.profile,
+            },
         )
         # Set trace-level session_id via the underlying OTel span attribute
         if hasattr(root_span, "_otel_span"):

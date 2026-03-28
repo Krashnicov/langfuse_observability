@@ -80,6 +80,46 @@
                         </div>
                     </div>
 
+                    <div class="field">
+                        <div class="field-label">
+                            <div class="field-title">Service Name</div>
+                            <div class="field-description">OTel service name shown in Langfuse (default: agent-zero). Can also be set via OTEL_SERVICE_NAME env var.</div>
+                        </div>
+                        <div class="field-control">
+                            <input type="text"
+                                   x-model="config.langfuse_service_name"
+                                   placeholder="agent-zero"
+                                   autocomplete="off" />
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <div class="field-label">
+                            <div class="field-title">Environment</div>
+                            <div class="field-description">Instance identifier for multi-deployment (e.g. production, staging, client-acme). Defaults to hostname if blank.</div>
+                        </div>
+                        <div class="field-control">
+                            <input type="text"
+                                   x-model="config.langfuse_environment"
+                                   placeholder="production"
+                                   autocomplete="off" />
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <div class="field-label">
+                            <div class="field-title">Release</div>
+                            <div class="field-description">Version tag shown in Langfuse traces (e.g. v1.2.3). Optional.</div>
+                        </div>
+                        <div class="field-control">
+                            <input type="text"
+                                   x-model="config.langfuse_release"
+                                   placeholder="v1.0.0"
+                                   autocomplete="off" />
+                        </div>
+                    </div>
+
+
                     <div class="field" x-data="{ testing: false, result: null }">
                         <div class="field-label">
                             <div class="field-title">Test Connection</div>
