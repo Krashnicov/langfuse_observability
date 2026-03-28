@@ -12,6 +12,55 @@ _client = None
 _client_initialized = False
 _install_attempted = False
 
+# Cached version info
+_version_info: dict[str, str] | None = None
+
+
+def get_version_info() -> dict[str, str]:
+    """Return auto-detected version info (cached after first call).
+
+    Keys:
+      plugin_version   - from plugin.yaml (e.g. '1.0.0')
+      langfuse_sdk     - from importlib.metadata (e.g. '4.0.1')
+      agent_zero       - from usr/settings.json version key (e.g. 'v1.2')
+    """
+    global _version_info
+    if _version_info is not None:
+        return _version_info
+
+    info: dict[str, str] = {}
+
+    # Plugin version from plugin.yaml
+    try:
+        import yaml as _yaml
+        _plugin_yaml = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "plugin.yaml")
+        with open(_plugin_yaml) as _f:
+            _data = _yaml.safe_load(_f)
+        info["plugin_version"] = str(_data.get("version", ""))
+    except Exception:
+        info["plugin_version"] = ""
+
+    # Langfuse SDK version
+    try:
+        import importlib.metadata as _meta
+        info["langfuse_sdk"] = _meta.version("langfuse")
+    except Exception:
+        info["langfuse_sdk"] = ""
+
+    # Agent Zero version from settings.json
+    try:
+        import json as _json
+        _settings_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "usr", "settings.json")
+        _settings_path = os.path.normpath(_settings_path)
+        with open(_settings_path) as _f:
+            _settings = _json.load(_f)
+        info["agent_zero"] = str(_settings.get("version", ""))
+    except Exception:
+        info["agent_zero"] = ""
+
+    _version_info = info
+    return _version_info
+
 
 def _ensure_langfuse_installed():
     """Auto-install langfuse package if not present."""
@@ -88,7 +137,8 @@ def get_langfuse_config() -> dict[str, Any]:
     service_name = config.get("langfuse_service_name") or os.getenv("OTEL_SERVICE_NAME", "agent-zero")
     # Default environment to hostname so multiple instances are distinguishable
     environment = config.get("langfuse_environment") or os.getenv("LANGFUSE_ENVIRONMENT", "") or os.getenv("HOSTNAME", "")
-    release = config.get("langfuse_release") or os.getenv("LANGFUSE_RELEASE", "")
+    # Default release to plugin version if not explicitly set
+    release = config.get("langfuse_release") or os.getenv("LANGFUSE_RELEASE", "") or get_version_info().get("plugin_version", "")
 
     # Auto-enable if keys are set via env vars but toggle is off
     if not enabled and public_key and secret_key:

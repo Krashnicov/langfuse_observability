@@ -6,7 +6,7 @@ if _PLUGIN_ROOT not in sys.path:
     sys.path.append(_PLUGIN_ROOT)
 
 from helpers.extension import Extension
-from langfuse_helpers.langfuse_helper import get_langfuse_client, should_sample
+from langfuse_helpers.langfuse_helper import get_langfuse_client, should_sample, get_version_info
 from langfuse import LangfuseOtelSpanAttributes
 from agent import Agent, LoopData
 
@@ -63,6 +63,7 @@ class LangfuseTraceStart(Extension):
             metadata={
                 "agent_number": agent.number,
                 "agent_profile": agent.config.profile,
+                **{f"v_{k}": v for k, v in get_version_info().items() if v},
             },
         )
         # Set trace-level session_id via the underlying OTel span attribute
