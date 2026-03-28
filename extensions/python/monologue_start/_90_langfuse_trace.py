@@ -1,9 +1,19 @@
 import os
 import sys
+import importlib
 
 _PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if _PLUGIN_ROOT not in sys.path:
     sys.path.append(_PLUGIN_ROOT)
+
+# Force-reload langfuse_helper from disk so any runtime edits are always picked up
+# (guards against stale sys.modules cache in long-running processes)
+_lf_mod_name = "langfuse_helpers.langfuse_helper"
+if _lf_mod_name in sys.modules:
+    try:
+        importlib.reload(sys.modules[_lf_mod_name])
+    except Exception:
+        pass
 
 from helpers.extension import Extension
 from langfuse_helpers.langfuse_helper import get_langfuse_client, should_sample, get_version_info
