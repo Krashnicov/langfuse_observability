@@ -44,6 +44,16 @@ def _format_prompt(system_parts, history_output) -> str:
     return "\n\n---\n\n".join(sections)
 
 
+def _get_ctx_limit(model_name: str) -> int:
+    """Return max_input_tokens for model via litellm.get_model_info(). Returns 0 on failure."""
+    try:
+        import litellm
+        info = litellm.get_model_info(model_name)
+        return int(info.get("max_input_tokens") or info.get("max_tokens") or 0)
+    except Exception:
+        return 0
+
+
 class LangfuseGenerationStart(Extension):
 
     async def execute(self, loop_data: LoopData = LoopData(), **kwargs):
@@ -58,7 +68,7 @@ class LangfuseGenerationStart(Extension):
 
         model = self.agent.get_chat_model()
         model_name = getattr(model, "model_name", "unknown") if model else "unknown"
-        model_name = _strip_provider(model_name)
+        model_name_stripped = _strip_provider(model_name)
 
         # Build readable formatted prompt string
         prompt_text = _format_prompt(loop_data.system, loop_data.history_output)
@@ -69,16 +79,34 @@ class LangfuseGenerationStart(Extension):
         if isinstance(ctx_window, dict):
             input_tokens = int(ctx_window.get("tokens", 0))
 
+        # Context window utilisation (item 5)
+        ctx_limit = _get_ctx_limit(model_name)
+        ctx_pct = round(input_tokens / ctx_limit * 100, 1) if ctx_limit and input_tokens else None
+
+        metadata: dict = {
+            "agent_number": self.agent.number,
+            "agent_profile": self.agent.config.profile,
+            "iteration": loop_data.iteration,
+            "ctx_tokens_used": input_tokens,
+        }
+        if ctx_limit:
+            metadata["ctx_limit"] = ctx_limit
+        if ctx_pct is not None:
+            metadata["ctx_pct"] = ctx_pct
+
         generation = parent.start_observation(
             name="main-llm",
             as_type="generation",
-            model=model_name,
+            model=model_name_stripped,
             input=prompt_text or None,
-            metadata={
-                "agent_number": self.agent.number,
-                "agent_profile": self.agent.config.profile,
-                "iteration": loop_data.iteration,
-            },
+            metadata=metadata,
         )
         loop_data.params_temporary["lf_generation"] = generation
         loop_data.params_temporary["lf_input_tokens"] = input_tokens
+
+        # Register span for LiteLLM usage callback (item 4)
+        try:
+            from langfuse_helpers.langfuse_helper import register_pending_generation
+            register_pending_generation(generation, loop_data)
+        except Exception:
+            pass

@@ -61,3 +61,10 @@ class LangfuseUtilityGeneration(Extension):
         )
         loop_data.params_temporary["lf_utility_gen"] = generation
         loop_data.params_temporary["lf_utility_input_tokens"] = input_tokens
+
+        # Register span for LiteLLM usage callback (item 4)
+        try:
+            from langfuse_helpers.langfuse_helper import register_pending_generation
+            register_pending_generation(generation, loop_data)
+        except Exception:
+            pass

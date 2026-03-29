@@ -13,16 +13,19 @@ class LangfuseUtilityGenerationEnd(Extension):
         if not generation:
             return
 
-        input_tokens = loop_data.params_temporary.get("lf_utility_input_tokens", 0)
-        output_tokens = approximate_tokens(response) if response else 0
-
         try:
-            update_kwargs = {"output": response}
-            if input_tokens or output_tokens:
-                update_kwargs["usage_details"] = {
-                    "input": int(input_tokens),
-                    "output": int(output_tokens),
-                }
+            update_kwargs: dict = {"output": response}
+
+            # Only add approximate usage if the LiteLLM callback did NOT already apply real usage
+            if not loop_data.params_temporary.get("lf_real_usage_applied"):
+                input_tokens = loop_data.params_temporary.get("lf_utility_input_tokens", 0)
+                output_tokens = approximate_tokens(response) if response else 0
+                if input_tokens or output_tokens:
+                    update_kwargs["usage_details"] = {
+                        "input": int(input_tokens),
+                        "output": int(output_tokens),
+                    }
+
             generation.update(**update_kwargs)
             generation.end()
         except Exception:
@@ -30,3 +33,4 @@ class LangfuseUtilityGenerationEnd(Extension):
 
         loop_data.params_temporary.pop("lf_utility_gen", None)
         loop_data.params_temporary.pop("lf_utility_input_tokens", None)
+        loop_data.params_temporary.pop("lf_real_usage_applied", None)

@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import random
@@ -61,6 +62,118 @@ def get_version_info() -> dict[str, str]:
     _version_info = info
     return _version_info
 
+
+
+# ---------------------------------------------------------------------------
+# Pending generation registry — correlates LiteLLM callbacks with Langfuse spans
+# ---------------------------------------------------------------------------
+_pending_generations: dict[int, tuple] = {}
+
+
+def _task_key() -> int:
+    """Return asyncio task id as a per-coroutine correlation key."""
+    try:
+        task = asyncio.current_task()
+        return id(task) if task else 0
+    except Exception:
+        return 0
+
+
+def register_pending_generation(span: Any, loop_data: Any) -> None:
+    """Store (span, loop_data) for retrieval by LiteLLM callback in the same task."""
+    key = _task_key()
+    if key:
+        _pending_generations[key] = (span, loop_data)
+
+
+def pop_pending_generation() -> tuple | None:
+    """Retrieve and remove (span, loop_data) for the current asyncio task."""
+    key = _task_key()
+    return _pending_generations.pop(key, None) if key else None
+
+
+class LangfuseUsageCallback:
+    """LiteLLM callback that writes real token usage and cost to Langfuse generation spans.
+
+    Registered once per process via ensure_usage_callback_registered().
+    Correlates with spans via asyncio task identity.
+    """
+
+    async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
+        try:
+            entry = pop_pending_generation()
+            if not entry:
+                return
+            span, loop_data = entry
+
+            usage = getattr(response_obj, "usage", None)
+            if not usage:
+                return
+
+            prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+            completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+            cost = getattr(usage, "cost", None)
+
+            # Cached input tokens (Anthropic / OpenAI prompt cache)
+            cached_tokens = 0
+            prompt_details = getattr(usage, "prompt_tokens_details", None)
+            if prompt_details:
+                cached_tokens = int(getattr(prompt_details, "cached_tokens", 0) or 0)
+
+            # Reasoning tokens (o1 / o3 models)
+            reasoning_tokens = 0
+            completion_details = getattr(usage, "completion_tokens_details", None)
+            if completion_details:
+                reasoning_tokens = int(getattr(completion_details, "reasoning_tokens", 0) or 0)
+
+            usage_details: dict[str, int] = {
+                "input": prompt_tokens,
+                "output": completion_tokens,
+            }
+            if cached_tokens:
+                usage_details["cache_read"] = cached_tokens
+            if reasoning_tokens:
+                usage_details["output_reasoning"] = reasoning_tokens
+
+            update_kwargs: dict[str, Any] = {"usage_details": usage_details}
+            if cost is not None:
+                try:
+                    update_kwargs["cost"] = float(cost)
+                except (TypeError, ValueError):
+                    pass
+
+            span.update(**update_kwargs)
+
+            # Signal to _end extension that real usage was applied — skip approximations
+            if loop_data is not None and hasattr(loop_data, "params_temporary"):
+                loop_data.params_temporary["lf_real_usage_applied"] = True
+
+        except Exception:
+            pass
+
+    def log_success_event(self, kwargs, response_obj, start_time, end_time):
+        """Sync fallback — not used for async paths but required by LiteLLM interface."""
+        pass
+
+
+# Guard: register callback only once per process
+_callback_registered = False
+
+
+def ensure_usage_callback_registered() -> None:
+    """Register LangfuseUsageCallback with LiteLLM exactly once per process."""
+    global _callback_registered
+    if _callback_registered:
+        return
+    try:
+        import litellm
+        existing = getattr(litellm, "callbacks", []) or []
+        if not any(isinstance(c, LangfuseUsageCallback) for c in existing):
+            litellm.callbacks = list(existing) + [LangfuseUsageCallback()]
+        _callback_registered = True
+        logger.info("LangfuseUsageCallback registered with LiteLLM")
+    except Exception as e:
+        logger.warning(f"Could not register LangfuseUsageCallback: {e}")
 
 def _ensure_langfuse_installed():
     """Auto-install langfuse package if not present."""

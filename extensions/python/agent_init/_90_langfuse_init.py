@@ -6,10 +6,11 @@ if _PLUGIN_ROOT not in sys.path:
     sys.path.append(_PLUGIN_ROOT)
 
 from helpers.extension import Extension
-from langfuse_helpers.langfuse_helper import get_langfuse_client
+from langfuse_helpers.langfuse_helper import get_langfuse_client, ensure_usage_callback_registered
 
 
 class LangfuseInit(Extension):
 
     def execute(self, **kwargs):
         get_langfuse_client()
+        ensure_usage_callback_registered()
