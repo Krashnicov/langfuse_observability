@@ -22,3 +22,26 @@ class LangfuseToolSpanEnd(Extension):
             span.end()
         except Exception:
             pass
+
+        # Item 7b — tool error event
+        is_error = response and getattr(response, "error", False)
+        if is_error:
+            try:
+                parent = loop_data.params_temporary.get("lf_iteration_span")
+                if not parent:
+                    parent = loop_data.params_persistent.get("lf_trace")
+                if parent:
+                    error_msg = output[:500] if output else "tool error"
+                    event = parent.start_observation(
+                        name="tool-error",
+                        as_type="event",
+                        metadata={
+                            "tool_name": tool_name,
+                            "error_preview": error_msg,
+                            "iteration": loop_data.iteration,
+                            "agent_profile": self.agent.config.profile,
+                        },
+                    )
+                    event.end()
+            except Exception:
+                pass

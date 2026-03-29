@@ -110,3 +110,21 @@ class LangfuseGenerationStart(Extension):
             register_pending_generation(generation, loop_data)
         except Exception:
             pass
+
+        # Item 7a — context pressure event when >= 80% of window used
+        if ctx_pct is not None and ctx_pct >= 80:
+            try:
+                event = parent.start_observation(
+                    name="context-pressure",
+                    as_type="event",
+                    metadata={
+                        "ctx_pct": ctx_pct,
+                        "ctx_tokens_used": input_tokens,
+                        "ctx_limit": ctx_limit,
+                        "iteration": loop_data.iteration,
+                        "agent_profile": self.agent.config.profile,
+                    },
+                )
+                event.end()
+            except Exception:
+                pass
