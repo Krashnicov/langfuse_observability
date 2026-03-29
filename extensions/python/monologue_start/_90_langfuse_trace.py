@@ -16,7 +16,7 @@ if _lf_mod_name in sys.modules:
         pass
 
 from helpers.extension import Extension
-from langfuse_helpers.langfuse_helper import get_langfuse_client, should_sample, get_version_info, get_langfuse_config
+from langfuse_helpers.langfuse_helper import get_langfuse_client, should_sample, get_version_info, get_langfuse_config, set_active_span
 from langfuse import LangfuseOtelSpanAttributes
 from agent import Agent, LoopData
 
@@ -121,6 +121,7 @@ class LangfuseTraceStart(Extension):
                     superior.loop_data.params_persistent.get("lf_root_trace")
                     or superior.loop_data.params_persistent.get("lf_trace")
                 )
+                set_active_span(span)
                 return
 
         # Top-level agent: create a root observation (becomes a new trace in v4)
@@ -151,3 +152,4 @@ class LangfuseTraceStart(Extension):
         loop_data.params_persistent["lf_trace"] = root_span
         loop_data.params_persistent["lf_root_trace"] = root_span
         loop_data.params_persistent["lf_trace_id"] = root_span.trace_id
+        set_active_span(root_span)

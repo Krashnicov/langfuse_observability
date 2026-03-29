@@ -5,6 +5,7 @@ import random
 import logging
 import subprocess
 from typing import Any
+from contextvars import ContextVar
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +93,26 @@ def pop_pending_generation() -> tuple | None:
     return _pending_generations.pop(key, None) if key else None
 
 
+# ---------------------------------------------------------------------------
+# Active span context variable — propagates to child tasks automatically
+# ---------------------------------------------------------------------------
+_active_span_var: ContextVar = ContextVar("lf_active_span", default=None)
+
+
+def set_active_span(span: Any) -> None:
+    """Register the active Langfuse span for the current asyncio context.
+
+    Called in monologue_start so child tasks (e.g. memory embedding recall)
+    inherit the span via Python's context variable propagation at task creation.
+    """
+    _active_span_var.set(span)
+
+
+def get_active_span() -> Any:
+    """Return the active Langfuse span for the current asyncio context, or None."""
+    return _active_span_var.get()
+
+
 class LangfuseUsageCallback:
     """LiteLLM callback that writes real token usage and cost to Langfuse generation spans.
 
@@ -101,6 +122,10 @@ class LangfuseUsageCallback:
 
     async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
         try:
+            call_type = (kwargs.get("call_type") or "").lower()
+            if call_type == "embedding":
+                await self._handle_embedding_event(kwargs, response_obj, start_time, end_time)
+                return
             entry = pop_pending_generation()
             if not entry:
                 return
@@ -148,6 +173,73 @@ class LangfuseUsageCallback:
             if loop_data is not None and hasattr(loop_data, "params_temporary"):
                 loop_data.params_temporary["lf_real_usage_applied"] = True
 
+        except Exception:
+            pass
+
+
+    async def _handle_embedding_event(self, kwargs, response_obj, start_time, end_time):
+        """Emit a Langfuse observation for embedding model calls.
+
+        Attaches to the active monologue span via ContextVar (set in monologue_start).
+        This ensures embedding calls from memory recall and tool execution are
+        captured under the correct trace without needing a before/after extension pair.
+        """
+        try:
+            parent = get_active_span()
+            if not parent:
+                return
+
+            model = kwargs.get("model") or "unknown"
+            if "/" in model and not model.startswith("ft:"):
+                model = model.split("/", 1)[1]
+
+            input_data = kwargs.get("input") or ""
+            if isinstance(input_data, list):
+                input_count = len(input_data)
+                # Show first input truncated as preview
+                first = str(input_data[0])[:200] if input_data else ""
+                input_preview = f"{input_count} text(s): {first}" + ("…" if len(str(input_data[0])) > 200 else "")
+            else:
+                input_str = str(input_data)
+                input_count = 1
+                input_preview = input_str[:200] + ("…" if len(input_str) > 200 else "")
+
+            usage = getattr(response_obj, "usage", None)
+            prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0) if usage else 0
+            cost = getattr(usage, "cost", None) if usage else None
+
+            latency_ms: int | None = None
+            try:
+                latency_ms = int((end_time - start_time).total_seconds() * 1000)
+            except Exception:
+                pass
+
+            metadata: dict[str, Any] = {
+                "call_type": "embedding",
+                "model": model,
+                "input_texts": input_count,
+            }
+            if latency_ms is not None:
+                metadata["latency_ms"] = latency_ms
+
+            span = parent.start_observation(
+                name="embedding",
+                as_type="span",
+                input=input_preview or None,
+                metadata=metadata,
+            )
+
+            update_kwargs: dict[str, Any] = {}
+            if prompt_tokens:
+                update_kwargs["usage_details"] = {"input": prompt_tokens, "output": 0}
+            if cost is not None:
+                try:
+                    update_kwargs["cost"] = float(cost)
+                except (TypeError, ValueError):
+                    pass
+            if update_kwargs:
+                span.update(**update_kwargs)
+            span.end()
         except Exception:
             pass
 
