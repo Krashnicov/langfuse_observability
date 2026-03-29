@@ -252,6 +252,7 @@ def get_langfuse_config() -> dict[str, Any]:
     environment = config.get("langfuse_environment") or os.getenv("LANGFUSE_ENVIRONMENT", "") or os.getenv("HOSTNAME", "")
     # Default release to plugin version if not explicitly set
     release = config.get("langfuse_release") or os.getenv("LANGFUSE_RELEASE", "") or get_version_info().get("plugin_version", "")
+    trace_name_template = config.get("langfuse_trace_name_template", "")
 
     # Auto-enable if keys are set via env vars but toggle is off
     if not enabled and public_key and secret_key:
@@ -266,6 +267,7 @@ def get_langfuse_config() -> dict[str, Any]:
         "service_name": service_name,
         "environment": environment,
         "release": release,
+        "trace_name_template": trace_name_template,
     }
 
 

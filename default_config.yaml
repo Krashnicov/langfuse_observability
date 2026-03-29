@@ -6,3 +6,4 @@ langfuse_sample_rate: 1.0
 langfuse_service_name: "agent-zero"
 langfuse_environment: ""
 langfuse_release: ""
+langfuse_trace_name_template: ""

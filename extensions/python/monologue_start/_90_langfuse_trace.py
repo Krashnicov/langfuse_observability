@@ -16,9 +16,68 @@ if _lf_mod_name in sys.modules:
         pass
 
 from helpers.extension import Extension
-from langfuse_helpers.langfuse_helper import get_langfuse_client, should_sample, get_version_info
+from langfuse_helpers.langfuse_helper import get_langfuse_client, should_sample, get_version_info, get_langfuse_config
 from langfuse import LangfuseOtelSpanAttributes
 from agent import Agent, LoopData
+
+
+def _build_trace_name(
+    agent,
+    user_msg: str,
+    superior=None,
+    template: str = "",
+) -> str:
+    """Build trace/span name per ADR-001 tiered strategy.
+
+    Tiers (evaluated in order):
+      Override  - plugin config template string (if set)
+      L0        - agent_number == 0 and user message present → first 60 chars
+      L1        - agent_number == 0, no user message         → 'agent0'
+      L2        - agent_number  > 0                          → 'parent > this' (max 2 levels)
+    """
+    profile = agent.config.profile or f"agent{agent.number}"
+    model = "unknown"
+    try:
+        m = agent.get_chat_model()
+        raw = getattr(m, "model_name", "unknown") if m else "unknown"
+        # strip provider prefix for template
+        model = raw.split("/", 1)[1] if "/" in raw and not raw.startswith("ft:") else raw
+    except Exception:
+        pass
+
+    parent_profile = ""
+    if superior:
+        try:
+            parent_profile = superior.config.profile or f"agent{superior.number}"
+        except Exception:
+            pass
+
+    # Override tier — simple {var} interpolation, no external calls
+    if template:
+        try:
+            return template.format(
+                profile=profile,
+                model=model,
+                agent_number=agent.number,
+                parent_profile=parent_profile,
+                user_msg=(user_msg[:60].strip() if user_msg else ""),
+            )
+        except Exception:
+            pass  # fall through to tiered logic
+
+    # L2 — subordinate agent
+    if agent.number > 0:
+        if parent_profile:
+            return f"{parent_profile} > {profile}"
+        return profile
+
+    # L0 — top-level agent with user message
+    if user_msg and user_msg.strip():
+        truncated = user_msg.strip()[:60]
+        return truncated + ("…" if len(user_msg.strip()) > 60 else "")
+
+    # L1 — top-level agent, no message
+    return profile
 
 
 class LangfuseTraceStart(Extension):
@@ -35,6 +94,8 @@ class LangfuseTraceStart(Extension):
 
         agent = self.agent
         context_id = str(agent.context.id) if agent.context else "unknown"
+        config = get_langfuse_config()
+        template = config.get("trace_name_template", "")
 
         # Check for parent agent (subordinate nesting)
         superior = agent.get_data(Agent.DATA_NAME_SUPERIOR)
@@ -46,8 +107,9 @@ class LangfuseTraceStart(Extension):
                 parent_span = superior.loop_data.params_persistent.get("lf_trace")
 
             if parent_span:
+                span_name = _build_trace_name(agent, "", superior=superior, template=template)
                 span = parent_span.start_observation(
-                    name=f"agent-{agent.number}-monologue",
+                    name=span_name,
                     as_type="agent",
                     metadata={
                         "agent_number": agent.number,
@@ -66,8 +128,10 @@ class LangfuseTraceStart(Extension):
         if loop_data.user_message:
             user_msg = str(loop_data.user_message.content)
 
+        trace_name = _build_trace_name(agent, user_msg, superior=None, template=template)
+
         root_span = client.start_observation(
-            name=f"agent-{agent.number}-monologue",
+            name=trace_name,
             as_type="agent",
             input=user_msg,
             metadata={
@@ -76,10 +140,13 @@ class LangfuseTraceStart(Extension):
                 **{f"v_{k}": v for k, v in get_version_info().items() if v},
             },
         )
-        # Set trace-level session_id via the underlying OTel span attribute
+        # Set trace-level attributes via OTel span
         if hasattr(root_span, "_otel_span"):
             root_span._otel_span.set_attribute(
                 LangfuseOtelSpanAttributes.TRACE_SESSION_ID, context_id
+            )
+            root_span._otel_span.set_attribute(
+                LangfuseOtelSpanAttributes.TRACE_NAME, trace_name
             )
         loop_data.params_persistent["lf_trace"] = root_span
         loop_data.params_persistent["lf_root_trace"] = root_span

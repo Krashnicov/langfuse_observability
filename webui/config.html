@@ -119,6 +119,19 @@
                         </div>
                     </div>
 
+                    <div class="field">
+                        <div class="field-label">
+                            <div class="field-title">Trace Name Template</div>
+                            <div class="field-description">Override auto-generated trace names. Variables: {profile}, {model}, {agent_number}, {parent_profile}, {user_msg}. E.g. <code>{profile}@{model}</code> for A/B testing. Leave blank for auto (ADR-001 tiers).</div>
+                        </div>
+                        <div class="field-control">
+                            <input type="text"
+                                   x-model="config.langfuse_trace_name_template"
+                                   placeholder="{profile}@{model}"
+                                   autocomplete="off" />
+                        </div>
+                    </div>
+
 
                     <div class="field" x-data="{ testing: false, result: null }">
                         <div class="field-label">
