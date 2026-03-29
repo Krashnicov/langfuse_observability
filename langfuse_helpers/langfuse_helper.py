@@ -382,20 +382,39 @@ def get_langfuse_client():
 
     try:
         from langfuse import Langfuse
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.resources import Resource, SERVICE_NAME
+        from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
 
-        # Set OTel service name so resourceAttributes.service.name is populated
-        os.environ["OTEL_SERVICE_NAME"] = config["service_name"]
+        # Build TracerProvider with explicit service.name in Resource.
+        # Passing tracer_provider= to Langfuse() bypasses _init_tracer_provider()
+        # in the SDK, which otherwise silently returns an already-initialized
+        # provider that never received our service.name (race condition with
+        # any OTel TracerProvider initialized earlier in the process).
+        resource_attrs: dict[str, Any] = {SERVICE_NAME: config["service_name"]}
+        if config.get("environment"):
+            # OTel semantic convention for deployment environment
+            resource_attrs["deployment.environment"] = config["environment"]
+        if config.get("release"):
+            resource_attrs["service.version"] = config["release"]
+        resource = Resource.create(resource_attrs)
+
+        sample_rate = float(config.get("sample_rate", 1.0))
+        tracer_provider_kwargs: dict[str, Any] = {"resource": resource}
+        if sample_rate < 1.0:
+            tracer_provider_kwargs["sampler"] = TraceIdRatioBased(sample_rate)
+        tracer_provider = TracerProvider(**tracer_provider_kwargs)
 
         client_kwargs: dict[str, Any] = {
             "public_key": config["public_key"],
             "secret_key": config["secret_key"],
             "host": config["host"],
+            "tracer_provider": tracer_provider,
         }
         if config.get("environment"):
             client_kwargs["environment"] = config["environment"]
         if config.get("release"):
             client_kwargs["release"] = config["release"]
-
         _client = Langfuse(**client_kwargs)
         _client_initialized = True
         logger.info("Langfuse client initialized successfully")
