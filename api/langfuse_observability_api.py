@@ -75,7 +75,33 @@ class LangfuseObservabilityAPI(LangfuseClient):
         # AC-2.4: **kwargs forwarded unchanged — no intermediate params dict
         return self._sdk_call(self._client.api.trace.list, **kwargs)
 
-    # get_trace() added by STORY-003
+    def get_trace(self, trace_id: str):  # AC-3.1
+        """GET /api/public/traces/{id} — single trace with observations.
+
+        Returns the raw SDK Pydantic trace object without modification.
+        The .observations attribute (list of observation objects) is
+        accessible to the caller for serialisation — no serialisation here.
+
+        Args:
+            trace_id: The trace ID to retrieve.
+
+        Returns:
+            SDK Pydantic trace object with .id, .name, .observations,
+            .session_id, .total_cost, .tags, .metadata.
+
+        Raises:
+            ValueError: If trace_id is falsy (empty string or None).
+            LangfuseAuthError: On 401/403 Unauthorized SDK responses.
+            LangfuseAPIError: On any other non-2xx SDK API response.
+
+        Satisfies: AC-3.1, AC-3.2, AC-3.3, AC-3.4, AC-3.5
+        """
+        if not trace_id:  # AC-3.2: guard before _sdk_call — empty or None raises
+            raise ValueError('trace_id is required')
+        return self._sdk_call(  # AC-3.3: one-line dispatch; timeout injected by _sdk_call
+            self._client.api.trace.get, trace_id  # AC-3.3, AC-3.4: SDK object returned verbatim
+        )  # AC-3.5: _sdk_call translates _SDKApiError -> LangfuseAPIError
+
 
     # ── Phase 1: Observations ─────────────────────────────────────────────
     # list_observations() added by STORY-004
