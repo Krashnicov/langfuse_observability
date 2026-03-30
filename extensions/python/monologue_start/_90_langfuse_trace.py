@@ -1,6 +1,7 @@
 import os
 import sys
 import importlib
+import json
 
 _PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if _PLUGIN_ROOT not in sys.path:
@@ -148,6 +149,16 @@ class LangfuseTraceStart(Extension):
             )
             root_span._otel_span.set_attribute(
                 LangfuseOtelSpanAttributes.TRACE_NAME, trace_name
+            )
+            # user_id — prefer context.name (human-readable session label), fall back to UUID
+            user_id = (agent.context.name or context_id) if agent.context else context_id
+            root_span._otel_span.set_attribute(
+                LangfuseOtelSpanAttributes.TRACE_USER_ID, str(user_id)
+            )
+            # tags — "agent-zero" for global cross-trace filtering, profile for per-agent
+            profile = agent.config.profile or f"agent{agent.number}"
+            root_span._otel_span.set_attribute(
+                LangfuseOtelSpanAttributes.TRACE_TAGS, json.dumps(["agent-zero", profile])
             )
         loop_data.params_persistent["lf_trace"] = root_span
         loop_data.params_persistent["lf_root_trace"] = root_span

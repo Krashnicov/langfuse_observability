@@ -154,6 +154,7 @@ class LangfuseUsageCallback:
             usage_details: dict[str, int] = {
                 "input": prompt_tokens,
                 "output": completion_tokens,
+                "total": prompt_tokens + completion_tokens,
             }
             if cached_tokens:
                 usage_details["cache_read"] = cached_tokens
@@ -163,7 +164,26 @@ class LangfuseUsageCallback:
             update_kwargs: dict[str, Any] = {"usage_details": usage_details}
             if cost is not None:
                 try:
-                    update_kwargs["cost"] = float(cost)
+                    total_cost = float(cost)
+                    cost_details: dict[str, float] = {"total": total_cost}
+                    # Attempt per-token cost breakdown via litellm
+                    try:
+                        import litellm as _litellm
+                        _model = kwargs.get("model") or ""
+                        _in_cost, _out_cost = _litellm.cost_per_token(
+                            model=_model,
+                            prompt_tokens=prompt_tokens,
+                            completion_tokens=completion_tokens,
+                        )
+                        cost_details["input"] = float(_in_cost)
+                        cost_details["output"] = float(_out_cost)
+                    except Exception:
+                        # Fallback: split proportionally by token ratio
+                        _total_tok = prompt_tokens + completion_tokens
+                        if _total_tok > 0:
+                            cost_details["input"] = round(total_cost * prompt_tokens / _total_tok, 10)
+                            cost_details["output"] = round(total_cost * completion_tokens / _total_tok, 10)
+                    update_kwargs["cost_details"] = cost_details
                 except (TypeError, ValueError):
                     pass
 

@@ -26,6 +26,7 @@ class LangfuseGenerationEnd(Extension):
                     update_kwargs["usage_details"] = {
                         "input": int(input_tokens),
                         "output": int(output_tokens),
+                        "total": int(input_tokens) + int(output_tokens),
                     }
 
             generation.update(**update_kwargs)
