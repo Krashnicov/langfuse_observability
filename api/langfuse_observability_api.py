@@ -126,7 +126,33 @@ class LangfuseObservabilityAPI(LangfuseClient):
         # AC-4.2: delegate to _sdk_call with self._client.api.observations.list
         # AC-4.3: **kwargs forwarded unchanged — no intermediate params dict
         return self._sdk_call(self._client.api.observations.list, **kwargs)
-    # get_observation()  added by STORY-005
+    def get_observation(self, observation_id: str):  # AC-5.1
+        """GET /api/public/observations/{id} — single observation with full detail.
+
+        Returns the raw SDK Pydantic observation object without modification.
+        Full detail fields accessible to caller: .input, .output, .usage, .type,
+        .calculated_total_cost, .calculated_input_cost, .calculated_output_cost,
+        .level — same attributes accessed in langfuse_trace.py lines 54-60.
+
+        Args:
+            observation_id: The observation ID to retrieve.
+
+        Returns:
+            SDK Pydantic observation object with full detail fields.
+
+        Raises:
+            ValueError: If observation_id is falsy (empty string or None).
+            LangfuseAuthError: On 401/403 Unauthorized SDK responses.
+            LangfuseAPIError: On any other non-2xx SDK API response.
+
+        Satisfies: AC-5.1, AC-5.2, AC-5.3, AC-5.4, AC-5.5
+        """
+        if not observation_id:  # AC-5.2: guard before _sdk_call — empty or None raises
+            raise ValueError('observation_id is required')
+        return self._sdk_call(  # AC-5.3: one-line dispatch; timeout injected by _sdk_call
+            self._client.api.observations.get, observation_id  # AC-5.3, AC-5.4: SDK object returned verbatim
+        )  # AC-5.5: _sdk_call translates _SDKApiError -> LangfuseAPIError
+
 
     # ── Phase 1: Sessions ─────────────────────────────────────────────────
     # list_sessions()    added by STORY-006
