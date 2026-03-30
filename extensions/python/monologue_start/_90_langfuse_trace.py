@@ -128,7 +128,10 @@ class LangfuseTraceStart(Extension):
         # Top-level agent: create a root observation (becomes a new trace in v4)
         user_msg = ""
         if loop_data.user_message:
-            user_msg = str(loop_data.user_message.content)
+            # output_text() returns "user: <message>" — strip role prefix to get bare text
+            # Using output_text() instead of str(content) avoids dict repr e.g. {'user_message': 'test'}
+            _raw = loop_data.user_message.output_text()
+            user_msg = _raw.split(": ", 1)[-1].strip() if ": " in _raw else _raw.strip()
 
         trace_name = _build_trace_name(agent, user_msg, superior=None, template=template)
 

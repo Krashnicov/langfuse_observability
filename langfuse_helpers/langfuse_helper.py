@@ -49,16 +49,37 @@ def get_version_info() -> dict[str, str]:
     except Exception:
         info["langfuse_sdk"] = ""
 
-    # Agent Zero version from settings.json
+    # Agent Zero version — resolved via helpers.git (same source as web UI),
+    # fallback to subprocess git describe at /a0 root.
     try:
-        import json as _json
-        _settings_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..", "usr", "settings.json")
-        _settings_path = os.path.normpath(_settings_path)
-        with open(_settings_path) as _f:
-            _settings = _json.load(_f)
-        info["agent_zero"] = str(_settings.get("version", ""))
+        # Resolve /a0 root as 4 levels up from this file:
+        # langfuse_helpers/langfuse_helper.py → plugin_root → usr/plugins → usr → /a0
+        _a0_root = os.path.normpath(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..")
+        )
+        _helpers_path = os.path.join(_a0_root, "helpers")
+        if _helpers_path not in sys.path:
+            sys.path.insert(0, _helpers_path)
+            sys.path.insert(0, _a0_root)
+        import helpers.git as _git_helper
+        _gitinfo = _git_helper.get_git_info()
+        _ver = str(_gitinfo.get("version", "")).strip()
+        info["agent_zero"] = _ver if _ver and _ver != "unknown" else ""
     except Exception:
-        info["agent_zero"] = ""
+        # Fallback: git describe --tags --abbrev=0 at /a0 root
+        try:
+            _a0_root = os.path.normpath(
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "..")
+            )
+            _ver = subprocess.check_output(
+                ["git", "describe", "--tags", "--abbrev=0"],
+                cwd=_a0_root,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+            info["agent_zero"] = _ver if _ver else ""
+        except Exception:
+            info["agent_zero"] = ""
 
     _version_info = info
     return _version_info
