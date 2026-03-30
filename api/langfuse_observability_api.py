@@ -158,6 +158,29 @@ class LangfuseObservabilityAPI(LangfuseClient):
     # list_sessions()    added by STORY-006
     # get_session()      added by STORY-006
 
+    def list_sessions(self, **kwargs):                # AC-6.1
+        """GET /api/public/sessions -- paginated list.
+
+        Satisfies: AC-6.1, AC-6.2, AC-6.3, AC-6.8
+        """
+        # AC-6.2 / AC-6.3: forward kwargs to SDK sessions.list
+        return self._sdk_call(                        # AC-6.2
+            self._client.api.sessions.list, **kwargs
+        )
+
+    def get_session(self, session_id: str):           # AC-6.4
+        """GET /api/public/sessions/{id} -- single session.
+
+        Satisfies: AC-6.4, AC-6.5, AC-6.6, AC-6.7, AC-6.8
+        """
+        # AC-6.5: guard -- empty/None raises ValueError
+        if not session_id:
+            raise ValueError('session_id is required')
+        # AC-6.6 / AC-6.8: dispatch to SDK via _sdk_call
+        return self._sdk_call(                       # AC-6.6
+            self._client.api.sessions.get, session_id
+        )
+
     # ── Phase 2–7 Stubs ───────────────────────────────────────────────────
     # All stubs raise NotImplementedError with the phase label per AC-2.6.
 
