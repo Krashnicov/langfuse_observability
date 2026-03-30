@@ -104,7 +104,28 @@ class LangfuseObservabilityAPI(LangfuseClient):
 
 
     # ── Phase 1: Observations ─────────────────────────────────────────────
-    # list_observations() added by STORY-004
+    def list_observations(self, **kwargs):  # AC-4.1
+        """GET /api/public/observations — paginated list with optional filters.
+
+        Delegates to self._client.api.observations.list via inherited _sdk_call().
+        All Langfuse filter parameters (page, limit, name, user_id, type, trace_id,
+        parent_observation_id, from_start_time, to_start_time, level) pass as-is.
+
+        Args:
+            **kwargs: Filter parameters forwarded unchanged to the SDK method.  # AC-4.3, AC-4.5
+
+        Returns:
+            SDK Pydantic paginated response model.  # AC-4.2
+
+        Raises:
+            LangfuseAuthError: On 401/403 Unauthorized SDK responses.  # AC-4.4
+            LangfuseAPIError: On any other non-2xx SDK API response.  # AC-4.4
+
+        Satisfies: AC-4.1, AC-4.2, AC-4.3, AC-4.4, AC-4.5
+        """
+        # AC-4.2: delegate to _sdk_call with self._client.api.observations.list
+        # AC-4.3: **kwargs forwarded unchanged — no intermediate params dict
+        return self._sdk_call(self._client.api.observations.list, **kwargs)
     # get_observation()  added by STORY-005
 
     # ── Phase 1: Sessions ─────────────────────────────────────────────────
