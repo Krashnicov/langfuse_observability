@@ -1,3 +1,4 @@
+import json
 from helpers.extension import Extension
 from agent import LoopData
 
@@ -57,10 +58,25 @@ class LangfuseMemoryRetriever(Extension):
             full_output += f"\n\n### Solutions\n\n{solutions_txt}"
         full_output = full_output[:4000] + ("\n…" if len(full_output) > 4000 else "")
 
+        # Derive recall query from current user message (same logic as _90_langfuse_trace.py)
+        query_text = ""
+        if loop_data.user_message:
+            try:
+                _qraw = loop_data.user_message.output_text()
+                _q = _qraw.split(": ", 1)[-1].strip() if ": " in _qraw else _qraw.strip()
+                if _q.startswith("{") and _q.endswith("}"):
+                    _qp = json.loads(_q)
+                    if isinstance(_qp, dict):
+                        _q = str(_qp.get("user_message") or _qp.get("message") or _qp.get("text") or _q)
+                query_text = _q[:500]  # cap query preview at 500 chars
+            except Exception:
+                pass
+
         try:
             span = parent.start_observation(
                 name="memory-recall",
                 as_type="retriever",
+                input=query_text or None,
                 output=full_output or output_summary,
                 metadata={
                     "memories_found": mem_count,

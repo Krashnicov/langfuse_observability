@@ -133,6 +133,21 @@ class LangfuseTraceStart(Extension):
             # Using output_text() instead of str(content) avoids dict repr e.g. {'user_message': 'test'}
             _raw = loop_data.user_message.output_text()
             user_msg = _raw.split(": ", 1)[-1].strip() if ": " in _raw else _raw.strip()
+            # If the stripped value is still a serialised JSON dict, unwrap the
+            # human-readable text field. Handles A0 content objects like
+            #   '{"user_message": "hello world"}'
+            if user_msg.startswith("{") and user_msg.endswith("}"):
+                try:
+                    _parsed = json.loads(user_msg)
+                    if isinstance(_parsed, dict):
+                        user_msg = str(
+                            _parsed.get("user_message")
+                            or _parsed.get("message")
+                            or _parsed.get("text")
+                            or user_msg
+                        )
+                except (json.JSONDecodeError, TypeError):
+                    pass
 
         trace_name = _build_trace_name(agent, user_msg, superior=None, template=template)
 
