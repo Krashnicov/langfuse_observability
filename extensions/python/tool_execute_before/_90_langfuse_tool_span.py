@@ -19,9 +19,11 @@ class LangfuseToolSpanStart(Extension):
             val_str = str(v)
             args_summary[k] = val_str[:500] if len(val_str) > 500 else val_str
 
+        # Use as_type='span' (not 'tool') so Langfuse sessions view populates
+        # input/output/latency columns correctly for tool calls.
         span = parent.start_observation(
             name=f"tool-{tool_name}" if tool_name else "tool-unknown",
-            as_type="tool",
+            as_type="span",
             input=args_summary,
             metadata={"tool_name": tool_name},
         )

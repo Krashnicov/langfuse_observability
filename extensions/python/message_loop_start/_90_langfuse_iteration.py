@@ -12,9 +12,11 @@ class LangfuseIterationStart(Extension):
         if not trace:
             return
 
+        # Use as_type='span' (not 'chain') so Langfuse sessions view populates
+        # input/output/latency columns for iteration-level spans.
         span = trace.start_observation(
             name=f"iteration-{loop_data.iteration}",
-            as_type="chain",
+            as_type="span",
             metadata={"iteration": loop_data.iteration},
         )
         loop_data.params_temporary["lf_iteration_span"] = span

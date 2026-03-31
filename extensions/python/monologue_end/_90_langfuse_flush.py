@@ -24,7 +24,10 @@ class LangfuseFlush(Extension):
         if trace:
             try:
                 trace.update(
-                    output=loop_data.last_response[:2000] if loop_data.last_response else "",
+                    # No truncation — pass full response text to Langfuse
+                    # (API-side /traces/{id} response is truncated to 2000 chars by server;
+                    #  individual /observations responses return full content)
+                    output=loop_data.last_response or "",
                 )
                 trace.end()
             except Exception:

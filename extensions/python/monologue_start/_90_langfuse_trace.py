@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import importlib
 import json
@@ -154,7 +155,9 @@ class LangfuseTraceStart(Extension):
                 LangfuseOtelSpanAttributes.TRACE_NAME, trace_name
             )
             # user_id — prefer context.name (human-readable session label), fall back to UUID
-            user_id = (agent.context.name or context_id) if agent.context else context_id
+            # Strip any '(branch)' or parenthetical suffix from context name
+            _uid_raw = str((agent.context.name or context_id) if agent.context else context_id)
+            user_id = re.sub(r'\s*\(.*?\)\s*$', '', _uid_raw).strip()
             root_span._otel_span.set_attribute(
                 LangfuseOtelSpanAttributes.TRACE_USER_ID, str(user_id)
             )
@@ -163,6 +166,8 @@ class LangfuseTraceStart(Extension):
             root_span._otel_span.set_attribute(
                 LangfuseOtelSpanAttributes.TRACE_TAGS, json.dumps(["agent-zero", profile])
             )
+            # agent.profile — surface agent profile in Langfuse trace for per-profile filtering
+            root_span._otel_span.set_attribute('agent.profile', str(profile))
         loop_data.params_persistent["lf_trace"] = root_span
         loop_data.params_persistent["lf_root_trace"] = root_span
         loop_data.params_persistent["lf_trace_id"] = root_span.trace_id
