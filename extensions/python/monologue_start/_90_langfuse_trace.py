@@ -159,6 +159,7 @@ class LangfuseTraceStart(Extension):
                 "agent_number": agent.number,
                 "agent_profile": agent.config.profile,
                 **{f"v_{k}": v for k, v in get_version_info().items() if v},
+                **({"v_context_id": context_id} if context_id else {}),
             },
         )
         # Set trace-level attributes via OTel span
