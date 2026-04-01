@@ -1,5 +1,4 @@
 import os
-import re
 import sys
 import importlib
 import json
@@ -150,6 +149,7 @@ class LangfuseTraceStart(Extension):
                     pass
 
         trace_name = _build_trace_name(agent, user_msg, superior=None, template=template)
+        trace_name = f"[{context_id}] {trace_name}"
 
         root_span = client.start_observation(
             name=trace_name,
@@ -169,13 +169,6 @@ class LangfuseTraceStart(Extension):
             )
             root_span._otel_span.set_attribute(
                 LangfuseOtelSpanAttributes.TRACE_NAME, trace_name
-            )
-            # user_id — prefer context.name (human-readable session label), fall back to UUID
-            # Strip any '(branch)' or parenthetical suffix from context name
-            _uid_raw = str((agent.context.name or context_id) if agent.context else context_id)
-            user_id = re.sub(r'\s*\(.*?\)\s*$', '', _uid_raw).strip()
-            root_span._otel_span.set_attribute(
-                LangfuseOtelSpanAttributes.TRACE_USER_ID, str(user_id)
             )
             # tags — "agent-zero" for global cross-trace filtering, profile for per-agent
             profile = agent.config.profile or f"agent{agent.number}"
