@@ -23,5 +23,5 @@ from langfuse_helpers.langfuse_helper import get_langfuse_client, ensure_usage_c
 class LangfuseInit(Extension):
 
     def execute(self, **kwargs):
-        get_langfuse_client()
+        get_langfuse_client(self.agent)
         ensure_usage_callback_registered()

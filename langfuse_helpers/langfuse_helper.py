@@ -9,9 +9,11 @@ from contextvars import ContextVar
 
 logger = logging.getLogger(__name__)
 
-# Lazy-loaded singleton
-_client = None
-_client_initialized = False
+# ---------------------------------------------------------------------------
+# Per-profile client registry  (replaces old _client / _client_initialized)
+# ---------------------------------------------------------------------------
+_clients: dict[str, Any] = {}
+_clients_initialized: set[str] = set()
 _install_attempted = False
 
 # Cached version info
@@ -84,6 +86,127 @@ def get_version_info() -> dict[str, str]:
     _version_info = info
     return _version_info
 
+
+# ---------------------------------------------------------------------------
+# Multi-profile configuration helpers
+# ---------------------------------------------------------------------------
+
+def _resolve_profile_name(raw_config: dict, agent=None) -> str:
+    """Resolve the profile name for the given agent context.
+
+    Resolution chain (first match wins):
+      1. agent_map[agent.config.profile]  — per-agent-profile override
+      2. project_map[agent.context.project]  — per-A0-project override
+      3. "default"  — global fallback
+
+    Falls back to "default" if the mapped profile name is not present in
+    raw_config["profiles"].
+
+    Args:
+        raw_config: Full plugin config dict (from get_plugin_config).
+        agent: Optional A0 Agent instance.  Accepts None gracefully.
+
+    Returns:
+        Profile name string (always "default" when agent is None or no match).
+    """
+    if agent is None:
+        return "default"
+
+    profiles: dict = raw_config.get("profiles") or {}
+    agent_map: dict = raw_config.get("agent_map") or {}
+    project_map: dict = raw_config.get("project_map") or {}
+
+    # 1. agent_map — keyed by agent.config.profile (or agent.agent_name fallback)
+    try:
+        agent_profile_key = (
+            getattr(agent.config, "profile", None)
+            or getattr(agent, "agent_name", None)
+            or ""
+        )
+        if agent_profile_key and agent_profile_key in agent_map:
+            mapped = agent_map[agent_profile_key]
+            if mapped in profiles:
+                return mapped
+            # mapped name not in profiles — skip to next tier
+    except Exception:
+        pass
+
+    # 2. project_map — keyed by A0 project name
+    try:
+        project = getattr(agent.context, "project", None)
+        project_name: str = ""
+        if project:
+            if isinstance(project, str):
+                project_name = project
+            else:
+                # May be a project object with a .name attribute
+                project_name = str(getattr(project, "name", project) or "")
+        if project_name and project_name in project_map:
+            mapped = project_map[project_name]
+            if mapped in profiles:
+                return mapped
+    except Exception:
+        pass
+
+    return "default"
+
+
+def _get_profile_config(raw_config: dict, profile_name: str) -> dict:
+    """Extract per-profile settings, merging profile overrides onto the flat-key base.
+
+    Flat keys (``langfuse_public_key``, etc.) always define the base defaults.
+    Named entries in ``raw_config["profiles"]`` override individual keys.
+
+    Profile entries support:
+      - langfuse_host
+      - langfuse_public_key
+      - langfuse_secret_key
+      - langfuse_enabled  (optional; inherits flat value if absent)
+      - langfuse_sample_rate, langfuse_service_name, langfuse_environment,
+        langfuse_release, langfuse_trace_name_template  (optional; inherit)
+      - org_id  (optional Langfuse org identifier, profile-only)
+      - label   (optional human label, profile-only)
+
+    Args:
+        raw_config:   Full plugin config dict.
+        profile_name: Resolved profile name (e.g. "default", "staging").
+
+    Returns:
+        Merged config dict ready for consumption by get_langfuse_config().
+    """
+    profiles: dict = raw_config.get("profiles") or {}
+    profile_data: dict = profiles.get(profile_name) or {}
+
+    def _pick(key: str, fallback):
+        """Return profile value > flat value > fallback.
+
+        None and empty-string in the profile are treated as "not set" so
+        the flat key value is used instead.  This allows sparse profiles
+        that only override specific fields.
+        """
+        pv = profile_data.get(key)
+        # Accept False/0 as valid overrides, reject None and ""
+        if pv is not None and pv != "":
+            return pv
+        fv = raw_config.get(key)
+        if fv is not None:
+            return fv
+        return fallback
+
+    return {
+        "langfuse_enabled":            _pick("langfuse_enabled",            False),
+        "langfuse_public_key":         _pick("langfuse_public_key",         ""),
+        "langfuse_secret_key":         _pick("langfuse_secret_key",         ""),
+        "langfuse_host":               _pick("langfuse_host",               "https://cloud.langfuse.com"),
+        "langfuse_sample_rate":        _pick("langfuse_sample_rate",        1.0),
+        "langfuse_service_name":       _pick("langfuse_service_name",       "agent-zero"),
+        "langfuse_environment":        _pick("langfuse_environment",        ""),
+        "langfuse_release":            _pick("langfuse_release",            ""),
+        "langfuse_trace_name_template": _pick("langfuse_trace_name_template", ""),
+        # Profile-only extras (not surfaced by flat config)
+        "org_id":  profile_data.get("org_id", ""),
+        "label":   profile_data.get("label", ""),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -370,22 +493,59 @@ def _patch_langfuse_models() -> None:
         logger.warning(f"Could not patch langfuse Project model: {e}")
 
 
-def get_langfuse_config() -> dict[str, Any]:
-    """Get Langfuse configuration with plugin config > env var > default precedence."""
-    from helpers.plugins import get_plugin_config
+# ---------------------------------------------------------------------------
+# Public configuration API
+# ---------------------------------------------------------------------------
 
-    config = get_plugin_config("langfuse_observability", None) or {}
-    public_key = config.get("langfuse_public_key") or os.getenv("LANGFUSE_PUBLIC_KEY", "")
-    secret_key = config.get("langfuse_secret_key") or os.getenv("LANGFUSE_SECRET_KEY", "")
-    host = config.get("langfuse_host") or os.getenv("LANGFUSE_HOST", "https://us.cloud.langfuse.com")
-    enabled = config.get("langfuse_enabled", False)
-    sample_rate = float(config.get("langfuse_sample_rate", 1.0))
-    service_name = config.get("langfuse_service_name") or os.getenv("OTEL_SERVICE_NAME", "agent-zero")
+def get_langfuse_config(
+    agent=None,
+    _raw_config: dict | None = None,
+) -> dict[str, Any]:
+    """Get Langfuse configuration for the resolved profile.
+
+    Resolution chain (first match wins):
+      agent_map[agent.config.profile] → project_map[project_name] → "default"
+
+    Precedence within a profile:
+      profile override > flat config key > env var > hard-coded fallback
+
+    Args:
+        agent:       Optional A0 Agent instance used for profile resolution.
+                     Pass None (or omit) to always use the default profile.
+        _raw_config: Inject raw plugin config dict directly — intended for unit
+                     tests only.  Production callers should leave this as None.
+
+    Returns:
+        Dict with keys: enabled, public_key, secret_key, host, sample_rate,
+        service_name, environment, release, trace_name_template, profile_name,
+        org_id, label.
+    """
+    if _raw_config is None:
+        from helpers.plugins import get_plugin_config
+        _raw_config = get_plugin_config("langfuse_observability", None) or {}
+
+    profile_name = _resolve_profile_name(_raw_config, agent)
+    merged = _get_profile_config(_raw_config, profile_name)
+
+    public_key = merged["langfuse_public_key"] or os.getenv("LANGFUSE_PUBLIC_KEY", "")
+    secret_key = merged["langfuse_secret_key"] or os.getenv("LANGFUSE_SECRET_KEY", "")
+    host = merged["langfuse_host"] or os.getenv("LANGFUSE_HOST", "https://us.cloud.langfuse.com")
+    enabled = merged["langfuse_enabled"]
+    sample_rate = float(merged["langfuse_sample_rate"])
+    service_name = merged["langfuse_service_name"] or os.getenv("OTEL_SERVICE_NAME", "agent-zero")
     # Default environment to hostname so multiple instances are distinguishable
-    environment = config.get("langfuse_environment") or os.getenv("LANGFUSE_ENVIRONMENT", "") or os.getenv("HOSTNAME", "")
+    environment = (
+        merged["langfuse_environment"]
+        or os.getenv("LANGFUSE_ENVIRONMENT", "")
+        or os.getenv("HOSTNAME", "")
+    )
     # Default release to plugin version if not explicitly set
-    release = config.get("langfuse_release") or os.getenv("LANGFUSE_RELEASE", "") or get_version_info().get("plugin_version", "")
-    trace_name_template = config.get("langfuse_trace_name_template", "")
+    release = (
+        merged["langfuse_release"]
+        or os.getenv("LANGFUSE_RELEASE", "")
+        or get_version_info().get("plugin_version", "")
+    )
+    trace_name_template = merged["langfuse_trace_name_template"]
 
     # Auto-enable if keys are set via env vars but toggle is off
     if not enabled and public_key and secret_key:
@@ -401,23 +561,41 @@ def get_langfuse_config() -> dict[str, Any]:
         "environment": environment,
         "release": release,
         "trace_name_template": trace_name_template,
+        # Profile metadata
+        "profile_name": profile_name,
+        "org_id": merged.get("org_id", ""),
+        "label": merged.get("label", ""),
     }
 
 
-def get_langfuse_client():
-    """Get or create the Langfuse client singleton. Returns None if disabled or not configured."""
-    global _client, _client_initialized
+def get_langfuse_client(agent=None):
+    """Get or create the Langfuse client for the resolved profile.
 
-    config = get_langfuse_config()
+    Clients are cached per profile name.  Multiple agents using the same
+    profile share one client instance (same as the previous global singleton
+    behaviour for the default profile).
+
+    Args:
+        agent: Optional A0 Agent instance.  Used to resolve the profile name
+               via agent_map / project_map.  Pass None for the default profile.
+
+    Returns:
+        Initialised Langfuse client, or None if disabled / not configured.
+    """
+    global _clients, _clients_initialized
+
+    config = get_langfuse_config(agent)
+    profile_name = config.get("profile_name", "default")
 
     if not config["enabled"] or not config["public_key"] or not config["secret_key"]:
-        _client = None
-        _client_initialized = False
+        # Evict any stale client for this profile
+        _clients.pop(profile_name, None)
+        _clients_initialized.discard(profile_name)
         return None
 
-    # Return cached client if already initialized
-    if _client_initialized and _client is not None:
-        return _client
+    # Return cached client if already initialised for this profile
+    if profile_name in _clients_initialized and _clients.get(profile_name) is not None:
+        return _clients[profile_name]
 
     _ensure_langfuse_installed()
 
@@ -456,32 +634,57 @@ def get_langfuse_client():
             client_kwargs["environment"] = config["environment"]
         if config.get("release"):
             client_kwargs["release"] = config["release"]
-        _client = Langfuse(**client_kwargs)
-        _client_initialized = True
-        logger.info("Langfuse client initialized successfully")
-        return _client
+
+        client = Langfuse(**client_kwargs)
+        _clients[profile_name] = client
+        _clients_initialized.add(profile_name)
+        logger.info(f"Langfuse client initialised for profile '{profile_name}'")
+        return client
     except Exception as e:
-        logger.warning(f"Failed to initialize Langfuse client: {e}")
-        _client = None
-        _client_initialized = False
+        logger.warning(f"Failed to initialise Langfuse client for profile '{profile_name}': {e}")
+        _clients.pop(profile_name, None)
+        _clients_initialized.discard(profile_name)
         return None
 
 
-def reset_client():
-    """Reset the client singleton (call when settings change)."""
-    global _client, _client_initialized
-    if _client:
-        try:
-            _client.flush()
-        except Exception:
-            pass
-    _client = None
-    _client_initialized = False
+def reset_client(profile_name: str | None = None) -> None:
+    """Reset and flush Langfuse client(s).
+
+    Args:
+        profile_name: Name of the profile whose client to reset.  Pass None
+                      (or omit) to reset ALL profiles — useful when the plugin
+                      config is saved from the webui.
+    """
+    global _clients, _clients_initialized
+
+    if profile_name is not None:
+        # Reset a single profile
+        client = _clients.pop(profile_name, None)
+        _clients_initialized.discard(profile_name)
+        if client:
+            try:
+                client.flush()
+            except Exception:
+                pass
+    else:
+        # Reset all profiles
+        for _name, client in list(_clients.items()):
+            if client:
+                try:
+                    client.flush()
+                except Exception:
+                    pass
+        _clients.clear()
+        _clients_initialized.clear()
 
 
-def should_sample() -> bool:
-    """Check if this interaction should be sampled based on sample_rate."""
-    config = get_langfuse_config()
+def should_sample(agent=None) -> bool:
+    """Check if this interaction should be sampled based on the resolved profile's sample_rate.
+
+    Args:
+        agent: Optional A0 Agent instance for profile resolution.
+    """
+    config = get_langfuse_config(agent)
     rate = config.get("sample_rate", 1.0)
     if rate >= 1.0:
         return True

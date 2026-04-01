@@ -26,7 +26,7 @@ class LangfuseTraceAttach(Extension):
 
         # Build Langfuse trace URL
         trace_url = ""
-        client = get_langfuse_client()
+        client = get_langfuse_client(self.agent)
         if client:
             try:
                 trace_url = client.get_trace_url(trace_id=trace_id) or ""

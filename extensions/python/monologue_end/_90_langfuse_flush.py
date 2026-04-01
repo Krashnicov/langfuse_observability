@@ -16,7 +16,7 @@ class LangfuseFlush(Extension):
         if not loop_data.params_persistent.get("lf_sampled"):
             return
 
-        client = get_langfuse_client()
+        client = get_langfuse_client(self.agent)
         if not client:
             return
 

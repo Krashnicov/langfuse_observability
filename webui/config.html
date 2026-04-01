@@ -1,15 +1,39 @@
 <html>
 <head>
     <title>Observability</title>
+    <style>
+        /* Profile management styles */
+        .profiles-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.85em; }
+        .profiles-table th { text-align: left; padding: 6px 8px; border-bottom: 2px solid var(--border, #e0e0e0); font-weight: 600; }
+        .profiles-table td { padding: 5px 8px; border-bottom: 1px solid var(--border, #e0e0e0); vertical-align: middle; }
+        .profiles-table tr:last-child td { border-bottom: none; }
+        .profile-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.78em;
+            background: var(--highlight, #e8f0fe); color: var(--highlight-text, #1a73e8); font-weight: 600; }
+        .profile-badge.default { background: var(--success-bg, #e6f4ea); color: var(--success, #188038); }
+        .map-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+        .map-row input { flex: 1; }
+        .map-key { font-family: monospace; font-size: 0.85em; }
+        .btn-sm { padding: 3px 10px; font-size: 0.82em; }
+        .inline-form { background: var(--bg2, #f8f9fa); border: 1px solid var(--border, #e0e0e0);
+            border-radius: 6px; padding: 14px; margin-top: 10px; }
+        .inline-form .field { margin-bottom: 10px; }
+        .inline-form .field-row { display: flex; gap: 10px; }
+        .inline-form .field-row > * { flex: 1; }
+        .section-note { font-size: 0.8em; color: var(--text-muted, #888); margin-top: 4px; }
+    </style>
 </head>
 <body>
     <div x-data>
         <template x-if="config">
-            <div>
+            <div x-data="lfProfileManager()">
+
+                <!-- ===================================================== -->
+                <!-- DEFAULT CONNECTION                                       -->
+                <!-- ===================================================== -->
                 <div class="section">
-                    <div class="section-title">Langfuse</div>
+                    <div class="section-title">Langfuse — Default Connection</div>
                     <div class="section-description">
-                        Trace LLM calls, tool executions, and agent interactions.
+                        Default credentials used when no profile is mapped to the active agent or project.
                         Credentials can also be set via LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY,
                         and LANGFUSE_HOST environment variables.
                     </div>
@@ -31,7 +55,7 @@
                     <div class="field">
                         <div class="field-label">
                             <div class="field-title">Public Key</div>
-                            <div class="field-description">Langfuse project public key (pk-lf-...)</div>
+                            <div class="field-description">Default Langfuse project public key (pk-lf-...)</div>
                         </div>
                         <div class="field-control">
                             <input type="text"
@@ -44,7 +68,7 @@
                     <div class="field">
                         <div class="field-label">
                             <div class="field-title">Secret Key</div>
-                            <div class="field-description">Langfuse project secret key (sk-lf-...)</div>
+                            <div class="field-description">Default Langfuse project secret key (sk-lf-...)</div>
                         </div>
                         <div class="field-control">
                             <input type="password"
@@ -57,7 +81,7 @@
                     <div class="field">
                         <div class="field-label">
                             <div class="field-title">Host URL</div>
-                            <div class="field-description">Langfuse instance URL (default: cloud.langfuse.com)</div>
+                            <div class="field-description">Default Langfuse instance URL</div>
                         </div>
                         <div class="field-control">
                             <input type="text"
@@ -109,7 +133,7 @@
                     <div class="field">
                         <div class="field-label">
                             <div class="field-title">Release</div>
-                            <div class="field-description">Version tag shown in Langfuse traces. Auto-detected from plugin.yaml (currently 1.0.0). Override only if needed.</div>
+                            <div class="field-description">Version tag shown in Langfuse traces. Auto-detected from plugin.yaml. Override only if needed.</div>
                         </div>
                         <div class="field-control">
                             <input type="text"
@@ -122,7 +146,7 @@
                     <div class="field">
                         <div class="field-label">
                             <div class="field-title">Trace Name Template</div>
-                            <div class="field-description">Override auto-generated trace names. Variables: {profile}, {model}, {agent_number}, {parent_profile}, {user_msg}. E.g. <code>{profile}@{model}</code> for A/B testing. Leave blank for auto (ADR-001 tiers).</div>
+                            <div class="field-description">Override auto-generated trace names. Variables: {profile}, {model}, {agent_number}, {parent_profile}, {user_msg}. Leave blank for auto.</div>
                         </div>
                         <div class="field-control">
                             <input type="text"
@@ -132,12 +156,12 @@
                         </div>
                     </div>
 
-
+                    <!-- Test Connection -->
                     <div class="field" x-data="{ testing: false, result: null }">
                         <div class="field-label">
                             <div class="field-title">Test Connection</div>
                             <div class="field-description">
-                                Verify your Langfuse credentials
+                                Verify your default Langfuse credentials
                                 <template x-if="result !== null">
                                     <span :style="result.success ? 'color: #4caf50' : 'color: #f44336'"
                                           x-text="result.success ? ' Connected!' : ' ' + result.error">
@@ -170,8 +194,391 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- ===================================================== -->
+                <!-- NAMED PROFILES                                          -->
+                <!-- ===================================================== -->
+                <div class="section">
+                    <div class="section-title">Named Profiles</div>
+                    <div class="section-description">
+                        Create named credential sets for different Langfuse orgs, projects, or environments.
+                        Profiles are assigned to agents or A0 projects via the mappings below.
+                        The <strong>default</strong> credentials above are always the base fallback.
+                    </div>
+
+                    <!-- Profile list -->
+                    <template x-if="profileList().length === 0">
+                        <p class="section-note">No named profiles yet. Click <em>Add Profile</em> to create one.</p>
+                    </template>
+
+                    <template x-if="profileList().length > 0">
+                        <table class="profiles-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Host</th>
+                                    <th>Public Key</th>
+                                    <th>Label</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="p in profileList()" :key="p.name">
+                                    <tr>
+                                        <td><span class="profile-badge" x-text="p.name"></span></td>
+                                        <td class="map-key" x-text="p.host || '(inherit default)'" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></td>
+                                        <td class="map-key" x-text="maskKey(p.public_key)"></td>
+                                        <td x-text="p.label || ''"></td>
+                                        <td style="white-space:nowrap;">
+                                            <button class="btn btn-field btn-sm" @click="beginEdit(p.name)">Edit</button>
+                                            <button class="btn btn-field btn-sm" style="color:#c62828;" @click="deleteProfile(p.name)">Delete</button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </template>
+
+                    <!-- Add / Edit inline form -->
+                    <template x-if="editingProfile !== null">
+                        <div class="inline-form">
+                            <strong x-text="editingProfile === '' ? 'New Profile' : 'Edit Profile: ' + editingProfile"></strong>
+
+                            <div class="field inline-form" style="background:none;border:none;padding:0;margin-top:10px;">
+                                <div class="inline-form" style="background:none;border:none;padding:0;">
+
+                                    <div class="field">
+                                        <div class="field-label">
+                                            <div class="field-title">Profile Name <span style="color:#c62828">*</span></div>
+                                            <div class="field-description">Unique identifier (e.g. staging, acme-corp, prod)</div>
+                                        </div>
+                                        <div class="field-control">
+                                            <input type="text" x-model="draft.name"
+                                                   :disabled="editingProfile !== ''"
+                                                   placeholder="staging"
+                                                   autocomplete="off" />
+                                        </div>
+                                    </div>
+
+                                    <div class="field">
+                                        <div class="field-label">
+                                            <div class="field-title">Label</div>
+                                            <div class="field-description">Human-readable description (optional)</div>
+                                        </div>
+                                        <div class="field-control">
+                                            <input type="text" x-model="draft.label"
+                                                   placeholder="Staging environment"
+                                                   autocomplete="off" />
+                                        </div>
+                                    </div>
+
+                                    <div class="field">
+                                        <div class="field-label">
+                                            <div class="field-title">Host URL</div>
+                                            <div class="field-description">Leave blank to inherit the default host</div>
+                                        </div>
+                                        <div class="field-control">
+                                            <input type="text" x-model="draft.langfuse_host"
+                                                   placeholder="https://us.cloud.langfuse.com"
+                                                   autocomplete="off" />
+                                        </div>
+                                    </div>
+
+                                    <div class="field">
+                                        <div class="field-label">
+                                            <div class="field-title">Public Key</div>
+                                            <div class="field-description">Langfuse public key for this profile</div>
+                                        </div>
+                                        <div class="field-control">
+                                            <input type="text" x-model="draft.langfuse_public_key"
+                                                   placeholder="pk-lf-..."
+                                                   autocomplete="off" />
+                                        </div>
+                                    </div>
+
+                                    <div class="field">
+                                        <div class="field-label">
+                                            <div class="field-title">Secret Key</div>
+                                            <div class="field-description">Langfuse secret key for this profile</div>
+                                        </div>
+                                        <div class="field-control">
+                                            <input type="password" x-model="draft.langfuse_secret_key"
+                                                   placeholder="sk-lf-..."
+                                                   autocomplete="off" />
+                                        </div>
+                                    </div>
+
+                                    <div class="field">
+                                        <div class="field-label">
+                                            <div class="field-title">Org ID</div>
+                                            <div class="field-description">Langfuse organisation ID (optional, metadata only)</div>
+                                        </div>
+                                        <div class="field-control">
+                                            <input type="text" x-model="draft.org_id"
+                                                   placeholder="org-..."
+                                                   autocomplete="off" />
+                                        </div>
+                                    </div>
+
+                                    <div class="field">
+                                        <div class="field-label">
+                                            <div class="field-title">Environment Override</div>
+                                            <div class="field-description">Override environment tag for this profile (optional)</div>
+                                        </div>
+                                        <div class="field-control">
+                                            <input type="text" x-model="draft.langfuse_environment"
+                                                   placeholder="staging"
+                                                   autocomplete="off" />
+                                        </div>
+                                    </div>
+
+                                    <div style="display:flex;gap:8px;margin-top:8px;">
+                                        <button class="btn btn-field"
+                                                :disabled="!draft.name || !draft.langfuse_public_key || !draft.langfuse_secret_key"
+                                                @click="saveProfile()">Save Profile</button>
+                                        <button class="btn btn-field" style="background:none;"
+                                                @click="cancelEdit()">Cancel</button>
+                                    </div>
+
+                                    <template x-if="draftError">
+                                        <p style="color:#c62828;font-size:0.82em;margin-top:6px;" x-text="draftError"></p>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <template x-if="editingProfile === null">
+                        <div style="margin-top:10px;">
+                            <button class="btn btn-field" @click="beginAdd()">+ Add Profile</button>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- ===================================================== -->
+                <!-- AGENT MAPPINGS                                          -->
+                <!-- ===================================================== -->
+                <div class="section">
+                    <div class="section-title">Agent → Profile Mappings</div>
+                    <div class="section-description">
+                        Route a specific Agent Zero agent profile to a named Langfuse profile.
+                        <strong>Takes priority over project mappings.</strong>
+                        Key = agent profile name (e.g. <code>researcher</code>, <code>agent0</code>).
+                    </div>
+
+                    <template x-for="(val, key) in agentMapEntries()" :key="key">
+                        <div class="map-row">
+                            <input class="map-key" type="text"
+                                   :value="key"
+                                   placeholder="agent-profile-name"
+                                   @change="renameMapKey('agent_map', key, $event.target.value)"
+                                   autocomplete="off" />
+                            <span style="font-size:1em;color:#888;">→</span>
+                            <select x-model="config.agent_map[key]">
+                                <option value="">— select profile —</option>
+                                <template x-for="p in profileList()" :key="p.name">
+                                    <option :value="p.name" x-text="p.name"></option>
+                                </template>
+                            </select>
+                            <button class="btn btn-field btn-sm" style="color:#c62828;"
+                                    @click="removeMapEntry('agent_map', key)">✕</button>
+                        </div>
+                    </template>
+
+                    <template x-if="profileList().length === 0">
+                        <p class="section-note">Create a named profile above before adding mappings.</p>
+                    </template>
+                    <template x-if="profileList().length > 0">
+                        <button class="btn btn-field btn-sm" style="margin-top:6px;"
+                                @click="addMapEntry('agent_map')">+ Add Agent Mapping</button>
+                    </template>
+                </div>
+
+                <!-- ===================================================== -->
+                <!-- PROJECT MAPPINGS                                        -->
+                <!-- ===================================================== -->
+                <div class="section">
+                    <div class="section-title">A0 Project → Profile Mappings</div>
+                    <div class="section-description">
+                        Route all agents running inside an Agent Zero project to a named Langfuse profile.
+                        Fallback when no agent mapping matches.
+                        Key = A0 project name (e.g. <code>langfuse-observability-project</code>).
+                    </div>
+
+                    <template x-for="(val, key) in projectMapEntries()" :key="key">
+                        <div class="map-row">
+                            <input class="map-key" type="text"
+                                   :value="key"
+                                   placeholder="a0-project-name"
+                                   @change="renameMapKey('project_map', key, $event.target.value)"
+                                   autocomplete="off" />
+                            <span style="font-size:1em;color:#888;">→</span>
+                            <select x-model="config.project_map[key]">
+                                <option value="">— select profile —</option>
+                                <template x-for="p in profileList()" :key="p.name">
+                                    <option :value="p.name" x-text="p.name"></option>
+                                </template>
+                            </select>
+                            <button class="btn btn-field btn-sm" style="color:#c62828;"
+                                    @click="removeMapEntry('project_map', key)">✕</button>
+                        </div>
+                    </template>
+
+                    <template x-if="profileList().length === 0">
+                        <p class="section-note">Create a named profile above before adding mappings.</p>
+                    </template>
+                    <template x-if="profileList().length > 0">
+                        <button class="btn btn-field btn-sm" style="margin-top:6px;"
+                                @click="addMapEntry('project_map')">+ Add Project Mapping</button>
+                    </template>
+                </div>
+
             </div>
         </template>
     </div>
+
+    <script>
+    function lfProfileManager() {
+        return {
+            editingProfile: null,   // null=hidden, ''=new, 'name'=editing
+            draft: {},
+            draftError: '',
+
+            // ---- profile helpers ----------------------------------------
+
+            _ensureStructure() {
+                if (!this.config.profiles || typeof this.config.profiles !== 'object')
+                    this.config.profiles = {};
+                if (!this.config.agent_map || typeof this.config.agent_map !== 'object')
+                    this.config.agent_map = {};
+                if (!this.config.project_map || typeof this.config.project_map !== 'object')
+                    this.config.project_map = {};
+            },
+
+            profileList() {
+                this._ensureStructure();
+                return Object.entries(this.config.profiles || {}).map(([name, data]) => ({
+                    name,
+                    host:              data.langfuse_host || '',
+                    public_key:        data.langfuse_public_key || '',
+                    label:             data.label || '',
+                }));
+            },
+
+            maskKey(key) {
+                if (!key) return '—';
+                if (key.length <= 8) return '***';
+                return key.slice(0, 6) + '...' + key.slice(-3);
+            },
+
+            // ---- add / edit / delete ------------------------------------
+
+            _blankDraft() {
+                return {
+                    name: '', label: '', org_id: '',
+                    langfuse_host: '', langfuse_public_key: '',
+                    langfuse_secret_key: '', langfuse_environment: '',
+                };
+            },
+
+            beginAdd() {
+                this.editingProfile = '';
+                this.draft = this._blankDraft();
+                this.draftError = '';
+            },
+
+            beginEdit(name) {
+                this._ensureStructure();
+                const data = this.config.profiles[name] || {};
+                this.editingProfile = name;
+                this.draft = {
+                    name,
+                    label:                  data.label || '',
+                    org_id:                 data.org_id || '',
+                    langfuse_host:          data.langfuse_host || '',
+                    langfuse_public_key:    data.langfuse_public_key || '',
+                    langfuse_secret_key:    data.langfuse_secret_key || '',
+                    langfuse_environment:   data.langfuse_environment || '',
+                };
+                this.draftError = '';
+            },
+
+            saveProfile() {
+                this._ensureStructure();
+                const name = (this.draft.name || '').trim();
+                if (!name) { this.draftError = 'Profile name is required.'; return; }
+                if (!/^[a-zA-Z0-9_\-]+$/.test(name)) {
+                    this.draftError = 'Profile name may only contain letters, numbers, hyphens, and underscores.';
+                    return;
+                }
+                if (this.editingProfile === '' && this.config.profiles[name]) {
+                    this.draftError = `A profile named "${name}" already exists.`;
+                    return;
+                }
+                if (!this.draft.langfuse_public_key) { this.draftError = 'Public key is required.'; return; }
+                if (!this.draft.langfuse_secret_key) { this.draftError = 'Secret key is required.'; return; }
+
+                const entry = {};
+                if (this.draft.langfuse_host)          entry.langfuse_host          = this.draft.langfuse_host;
+                if (this.draft.langfuse_public_key)    entry.langfuse_public_key    = this.draft.langfuse_public_key;
+                if (this.draft.langfuse_secret_key)    entry.langfuse_secret_key    = this.draft.langfuse_secret_key;
+                if (this.draft.langfuse_environment)   entry.langfuse_environment   = this.draft.langfuse_environment;
+                if (this.draft.org_id)                 entry.org_id                 = this.draft.org_id;
+                if (this.draft.label)                  entry.label                  = this.draft.label;
+
+                this.config.profiles[name] = entry;
+                this.editingProfile = null;
+                this.draftError = '';
+            },
+
+            cancelEdit() {
+                this.editingProfile = null;
+                this.draftError = '';
+            },
+
+            deleteProfile(name) {
+                this._ensureStructure();
+                if (!confirm(`Delete profile "${name}"? Mappings pointing to it will be left unchanged.`))
+                    return;
+                delete this.config.profiles[name];
+            },
+
+            // ---- map helpers --------------------------------------------
+
+            agentMapEntries() {
+                this._ensureStructure();
+                return this.config.agent_map || {};
+            },
+
+            projectMapEntries() {
+                this._ensureStructure();
+                return this.config.project_map || {};
+            },
+
+            addMapEntry(mapKey) {
+                this._ensureStructure();
+                // Find a unique placeholder key
+                let base = mapKey === 'agent_map' ? 'agent-profile' : 'project-name';
+                let key = base, i = 1;
+                while (this.config[mapKey][key] !== undefined) key = `${base}-${++i}`;
+                this.config[mapKey][key] = '';
+            },
+
+            removeMapEntry(mapKey, key) {
+                this._ensureStructure();
+                delete this.config[mapKey][key];
+            },
+
+            renameMapKey(mapKey, oldKey, newKey) {
+                newKey = (newKey || '').trim();
+                if (!newKey || newKey === oldKey) return;
+                this._ensureStructure();
+                const val = this.config[mapKey][oldKey];
+                delete this.config[mapKey][oldKey];
+                this.config[mapKey][newKey] = val;
+            },
+        };
+    }
+    </script>
 </body>
 </html>

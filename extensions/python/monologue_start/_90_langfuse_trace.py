@@ -84,18 +84,18 @@ def _build_trace_name(
 class LangfuseTraceStart(Extension):
 
     async def execute(self, loop_data: LoopData = LoopData(), **kwargs):
-        client = get_langfuse_client()
+        client = get_langfuse_client(self.agent)
         if not client:
             return
 
-        if not should_sample():
+        if not should_sample(self.agent):
             loop_data.params_persistent["lf_sampled"] = False
             return
         loop_data.params_persistent["lf_sampled"] = True
 
         agent = self.agent
         context_id = str(agent.context.id) if agent.context else "unknown"
-        config = get_langfuse_config()
+        config = get_langfuse_config(agent)
         template = config.get("trace_name_template", "")
 
         # Check for parent agent (subordinate nesting)
