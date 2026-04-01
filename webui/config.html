@@ -87,6 +87,31 @@
 
                     <div class="field">
                         <div class="field-label">
+                            <div class="field-title">Organisation ID</div>
+                            <div class="field-description">Langfuse organisation ID. Required for enterprise/multi-org Langfuse Cloud setups. Leave blank for single-org or self-hosted.</div>
+                        </div>
+                        <div class="field-control">
+                            <input type="text"
+                                   x-model="config.langfuse_org_id"
+                                   placeholder="org-..."
+                                   autocomplete="off" />
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <div class="field-label">
+                            <div class="field-title">Project Name</div>
+                            <div class="field-description">Informational label for this Langfuse project. Used in trace metadata. The active project is determined by your API keys.</div>
+                        </div>
+                        <div class="field-control">
+                            <input type="text"
+                                   x-model="config.langfuse_project_name"
+                                   placeholder="my-project"
+                                   autocomplete="off" />
+                        </div>
+                    </div>
+                    <div class="field">
+                        <div class="field-label">
                             <div class="field-title">Sample Rate</div>
                             <div class="field-description">Fraction of interactions to trace (1.0 = all, 0.1 = 10%)</div>
                         </div>

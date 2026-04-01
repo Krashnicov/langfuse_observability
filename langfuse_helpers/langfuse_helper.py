@@ -401,7 +401,8 @@ def get_langfuse_config(
 
     Returns:
         Dict with keys: enabled, public_key, secret_key, host, sample_rate,
-        service_name, environment, release, trace_name_template.
+        service_name, environment, release, trace_name_template,
+        org_id, project_name.
     """
     if _raw_config is None:
         from helpers.plugins import get_plugin_config
@@ -426,6 +427,10 @@ def get_langfuse_config(
         or get_version_info().get("plugin_version", "")
     )
     trace_name_template = _raw_config.get("langfuse_trace_name_template", "")
+    # Informational fields — stored in config, NOT passed to Langfuse() constructor
+    # (Langfuse SDK has no org_id kwarg; project is determined by API key pair)
+    org_id = _raw_config.get("langfuse_org_id", "")
+    project_name = _raw_config.get("langfuse_project_name", "")
 
     # Auto-enable if keys are set via env vars but toggle is off
     if not enabled and public_key and secret_key:
@@ -441,7 +446,9 @@ def get_langfuse_config(
         "environment": environment,
         "release": release,
         "trace_name_template": trace_name_template,
-    }
+        "org_id": org_id,
+        "project_name": project_name,
+}
 
 
 def get_langfuse_client(agent=None):

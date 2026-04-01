@@ -30,6 +30,8 @@ _FLAT_CONFIG = {
     "langfuse_environment": "testing",
     "langfuse_release": "v1.0.0",
     "langfuse_trace_name_template": "{profile}@{model}",
+    "langfuse_org_id": "org-test-1234",
+    "langfuse_project_name": "my-test-project",
 }
 
 
@@ -43,6 +45,7 @@ class TestGetLangfuseConfigFlatKeys:
             "enabled", "public_key", "secret_key", "host",
             "sample_rate", "service_name", "environment",
             "release", "trace_name_template",
+            "org_id", "project_name",
         }
         assert expected_keys.issubset(result.keys()), (
             f"Missing keys: {expected_keys - result.keys()}"
@@ -51,7 +54,7 @@ class TestGetLangfuseConfigFlatKeys:
     def test_no_legacy_profile_keys_in_result(self):
         """Result must NOT contain legacy custom-profile keys removed in this rework."""
         result = get_langfuse_config(_raw_config=_FLAT_CONFIG)
-        for removed_key in ("profile_name", "org_id", "label"):
+        for removed_key in ("profile_name", "label"):
             assert removed_key not in result, (
                 f"Legacy key '{removed_key}' should not be present in result"
             )
@@ -120,3 +123,77 @@ class TestGetLangfuseConfigFlatKeys:
         result = get_langfuse_config(_raw_config=cfg)
         # Keys are present → auto-enabled
         assert result["enabled"] is True
+
+class TestOrgIdProjectName:
+    """Tests for the new langfuse_org_id and langfuse_project_name config fields.
+
+    Both fields are informational only.  The Langfuse SDK constructor does not
+    accept an org_id kwarg in the installed version, so neither field is passed
+    to Langfuse().  This class verifies correct config-dict presence, value
+    mapping, and that the SDK signature contract holds.
+    """
+
+    def test_org_id_present_in_result(self):
+        """org_id key must be present in the resolved config dict."""
+        result = get_langfuse_config(_raw_config=_FLAT_CONFIG)
+        assert "org_id" in result
+
+    def test_org_id_value_read_from_flat_key(self):
+        """org_id maps directly from langfuse_org_id flat key."""
+        result = get_langfuse_config(_raw_config=_FLAT_CONFIG)
+        assert result["org_id"] == "org-test-1234"
+
+    def test_org_id_empty_when_key_absent(self):
+        """org_id defaults to empty string when langfuse_org_id absent from config."""
+        result = get_langfuse_config(_raw_config={})
+        assert result["org_id"] == ""
+
+    def test_org_id_empty_when_explicitly_blank(self):
+        """org_id is empty string when langfuse_org_id is explicitly set to ""."""
+        cfg = dict(_FLAT_CONFIG, langfuse_org_id="")
+        result = get_langfuse_config(_raw_config=cfg)
+        assert result["org_id"] == ""
+
+    def test_project_name_present_in_result(self):
+        """project_name key must be present in the resolved config dict."""
+        result = get_langfuse_config(_raw_config=_FLAT_CONFIG)
+        assert "project_name" in result
+
+    def test_project_name_value_read_from_flat_key(self):
+        """project_name maps directly from langfuse_project_name flat key."""
+        result = get_langfuse_config(_raw_config=_FLAT_CONFIG)
+        assert result["project_name"] == "my-test-project"
+
+    def test_project_name_empty_when_key_absent(self):
+        """project_name defaults to empty string when key absent from config."""
+        result = get_langfuse_config(_raw_config={})
+        assert result["project_name"] == ""
+
+    def test_sdk_constructor_has_no_org_id_kwarg(self):
+        """Langfuse() SDK constructor must NOT have org_id param in installed version.
+
+        This test acts as a forward-compatibility sentinel: if the Langfuse SDK
+        adds org_id in a future version, this test fails and signals that
+        langfuse_helper.py should be updated to pass org_id to the constructor.
+        """
+        import inspect
+        from langfuse import Langfuse
+        sig = inspect.signature(Langfuse.__init__)
+        assert "org_id" not in sig.parameters, (
+            "Langfuse SDK now has an org_id constructor param.  "
+            "Update get_langfuse_client() in langfuse_helper.py to pass "
+            "org_id=config['org_id'] when non-empty."
+        )
+
+    def test_new_keys_do_not_corrupt_existing_fields(self):
+        """Adding org_id/project_name must not alter any pre-existing config field values."""
+        result = get_langfuse_config(_raw_config=_FLAT_CONFIG)
+        assert result["enabled"] is True
+        assert result["public_key"] == "pk-lf-smoke"
+        assert result["secret_key"] == "sk-lf-smoke"
+        assert result["host"] == "http://localhost:3010/"
+        assert result["sample_rate"] == 0.5
+        assert result["service_name"] == "test-service"
+        assert result["environment"] == "testing"
+        assert result["release"] == "v1.0.0"
+        assert result["trace_name_template"] == "{profile}@{model}"
