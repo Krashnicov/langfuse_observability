@@ -23,6 +23,74 @@ from agent import Agent, LoopData
 from helpers import projects
 
 
+def _resolve_project_name(agent) -> "str | None":
+    """Resolve the active A0 project name for the current agent session.
+
+    Tries three tiers in order so that both top-level and subordinate agents
+    correctly inherit the project context:
+
+    1. context.data['project']  — set by projects.activate_project() on this
+       context (the happy-path; works for top-level sessions).
+    2. context.output_data['project']['name']  — also set by activate_project()
+       alongside tier-1; provides a fallback when data/output_data diverge.
+    3. Superior-agent walk — subordinate agents spawned via call_subordinate
+       may have a fresh context; walking the superior chain surfaces the
+       root session's project name.
+
+    Returns None gracefully when no active project is found.
+    """
+    context = getattr(agent, "context", None)
+    if context is None:
+        return None
+
+    # Tier 1: direct context data key (set by activate_project)
+    name = projects.get_context_project_name(context)
+    if name:
+        return name
+
+    # Tier 2: output_data['project'] (also set by activate_project alongside data)
+    try:
+        out = context.get_output_data(projects.CONTEXT_DATA_KEY_PROJECT)
+        if isinstance(out, dict):
+            name = out.get("name") or ""
+            if name:
+                return name
+        elif isinstance(out, str) and out:
+            return out
+    except Exception:
+        pass
+
+    # Tier 3: walk superior-agent chain so subordinates inherit project
+    try:
+        from agent import Agent as _Agent
+        superior = agent.get_data(_Agent.DATA_NAME_SUPERIOR)
+        while superior is not None:
+            sup_ctx = getattr(superior, "context", None)
+            if sup_ctx is not None:
+                name = projects.get_context_project_name(sup_ctx)
+                if name:
+                    return name
+                try:
+                    out = sup_ctx.get_output_data(projects.CONTEXT_DATA_KEY_PROJECT)
+                    if isinstance(out, dict):
+                        name = out.get("name") or ""
+                        if name:
+                            return name
+                    elif isinstance(out, str) and out:
+                        return out
+                except Exception:
+                    pass
+            # move up another level
+            try:
+                superior = superior.get_data(_Agent.DATA_NAME_SUPERIOR)
+            except Exception:
+                break
+    except Exception:
+        pass
+
+    return None
+
+
 def _build_trace_name(
     agent,
     user_msg: str,
@@ -96,7 +164,7 @@ class LangfuseTraceStart(Extension):
 
         agent = self.agent
         context_id = str(agent.context.id) if agent.context else "unknown"
-        project_name = projects.get_context_project_name(agent.context) if agent.context else None
+        project_name = _resolve_project_name(agent)
         config = get_langfuse_config(agent)
         template = config.get("trace_name_template", "")
 
