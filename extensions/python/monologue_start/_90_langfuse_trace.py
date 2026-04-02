@@ -20,6 +20,7 @@ from helpers.extension import Extension
 from langfuse_helpers.langfuse_helper import get_langfuse_client, should_sample, get_version_info, get_langfuse_config, set_active_span
 from langfuse import LangfuseOtelSpanAttributes
 from agent import Agent, LoopData
+from helpers import projects
 
 
 def _build_trace_name(
@@ -95,6 +96,7 @@ class LangfuseTraceStart(Extension):
 
         agent = self.agent
         context_id = str(agent.context.id) if agent.context else "unknown"
+        project_name = projects.get_context_project_name(agent.context) if agent.context else None
         config = get_langfuse_config(agent)
         template = config.get("trace_name_template", "")
 
@@ -115,6 +117,7 @@ class LangfuseTraceStart(Extension):
                     metadata={
                         "agent_number": agent.number,
                         "agent_profile": agent.config.profile,
+                        **({'project': project_name} if project_name else {}),
                     },
                 )
                 loop_data.params_persistent["lf_trace"] = span
@@ -159,7 +162,8 @@ class LangfuseTraceStart(Extension):
                 "agent_number": agent.number,
                 "agent_profile": agent.config.profile,
                 **{f"v_{k}": v for k, v in get_version_info().items() if v},
-                **({"v_context_id": context_id} if context_id else {}),
+                **({'v_context_id': context_id} if context_id else {}),
+                **({'project': project_name} if project_name else {}),
             },
         )
         # Set trace-level attributes via OTel span
@@ -173,10 +177,13 @@ class LangfuseTraceStart(Extension):
             # tags — "agent-zero" for global cross-trace filtering, profile for per-agent
             profile = agent.config.profile or f"agent{agent.number}"
             root_span._otel_span.set_attribute(
-                LangfuseOtelSpanAttributes.TRACE_TAGS, json.dumps(["agent-zero", profile])
+                LangfuseOtelSpanAttributes.TRACE_TAGS,
+                json.dumps(["agent-zero", profile] + ([project_name] if project_name else [])),
             )
             # agent.profile — surface agent profile in Langfuse trace for per-profile filtering
             root_span._otel_span.set_attribute('agent.profile', str(profile))
+            if project_name:
+                root_span._otel_span.set_attribute('agent.project', project_name)
         loop_data.params_persistent["lf_trace"] = root_span
         loop_data.params_persistent["lf_root_trace"] = root_span
         loop_data.params_persistent["lf_trace_id"] = root_span.trace_id
