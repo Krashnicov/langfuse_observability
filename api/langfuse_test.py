@@ -13,6 +13,33 @@ from helpers.plugins import get_plugin_config
 _SECRET_PLACEHOLDER = "***"
 
 
+def _resolve_project_info(public_key: str, secret_key: str, host: str) -> dict:
+    """Resolve project name and organisation name from GET /api/public/projects.
+
+    Returns dict with "project" and "org" string keys.
+    Returns empty strings on any error: empty data array, missing key, request failure.
+    """
+    try:
+        import httpx
+        host_url = host.rstrip("/")
+        resp = httpx.get(
+            f"{host_url}/api/public/projects",
+            auth=(public_key, secret_key),
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json().get("data", [])
+        if not data:
+            return {"project": "", "org": ""}
+        entry = data[0]
+        project_name = entry.get("name", "")
+        org = entry.get("organization") or {}
+        org_name = org.get("name", "") if isinstance(org, dict) else ""
+        return {"project": project_name, "org": org_name}
+    except Exception:
+        return {"project": "", "org": ""}
+
+
 class LangfuseTest(ApiHandler):
 
     async def process(self, input: dict, request: Request) -> dict | Response:
@@ -40,8 +67,13 @@ class LangfuseTest(ApiHandler):
             )
             result = client.auth_check()
             client.flush()
-            return {"success": result, "error": "" if result else "Authentication failed"}
+            if not result:
+                return {"success": False, "error": "Authentication failed"}
         except ImportError:
             return {"success": False, "error": "langfuse package not installed. Could not auto-install."}
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+        # Auth succeeded - resolve project + org from /api/public/projects
+        project_info = _resolve_project_info(public_key, secret_key, host)
+        return {"success": True, **project_info}

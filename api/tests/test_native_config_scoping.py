@@ -9,6 +9,7 @@ All tests use _raw_config injection to avoid requiring a live A0 environment.
 import sys
 import os
 import pytest
+import unittest.mock as _um
 
 # Ensure plugin root is on the path for import
 _plugin_root = os.path.normpath(
@@ -30,8 +31,6 @@ _FLAT_CONFIG = {
     "langfuse_environment": "testing",
     "langfuse_release": "v1.0.0",
     "langfuse_trace_name_template": "{profile}@{model}",
-    "langfuse_org_id": "org-test-1234",
-    "langfuse_project_name": "my-test-project",
 }
 
 
@@ -39,28 +38,20 @@ class TestGetLangfuseConfigFlatKeys:
     """Smoke tests verifying flat-key config resolution."""
 
     def test_returns_dict_with_all_expected_keys(self):
-        """get_langfuse_config() must return a dict containing all required flat keys."""
         result = get_langfuse_config(_raw_config=_FLAT_CONFIG)
         expected_keys = {
             "enabled", "public_key", "secret_key", "host",
             "sample_rate", "service_name", "environment",
             "release", "trace_name_template",
-            "org_id", "project_name",
         }
-        assert expected_keys.issubset(result.keys()), (
-            f"Missing keys: {expected_keys - result.keys()}"
-        )
+        assert expected_keys.issubset(result.keys()), f"Missing keys: {expected_keys - result.keys()}"
 
     def test_no_legacy_profile_keys_in_result(self):
-        """Result must NOT contain legacy custom-profile keys removed in this rework."""
         result = get_langfuse_config(_raw_config=_FLAT_CONFIG)
         for removed_key in ("profile_name", "label"):
-            assert removed_key not in result, (
-                f"Legacy key '{removed_key}' should not be present in result"
-            )
+            assert removed_key not in result
 
     def test_enabled_read_from_flat_key(self):
-        """enabled maps directly from langfuse_enabled."""
         result = get_langfuse_config(_raw_config=_FLAT_CONFIG)
         assert result["enabled"] is True
 
@@ -97,13 +88,11 @@ class TestGetLangfuseConfigFlatKeys:
         assert result["trace_name_template"] == "{profile}@{model}"
 
     def test_agent_none_uses_raw_config_directly(self):
-        """agent=None with _raw_config returns the same flat-key result."""
         result = get_langfuse_config(agent=None, _raw_config=_FLAT_CONFIG)
         assert result["public_key"] == "pk-lf-smoke"
         assert result["host"] == "http://localhost:3010/"
 
     def test_empty_raw_config_returns_safe_defaults(self):
-        """Empty config dict must not raise — returns safe defaults."""
         result = get_langfuse_config(_raw_config={})
         assert isinstance(result, dict)
         assert "enabled" in result
@@ -111,89 +100,114 @@ class TestGetLangfuseConfigFlatKeys:
         assert "secret_key" in result
 
     def test_disabled_flag_respected(self):
-        """langfuse_enabled=False is returned as enabled=False."""
         cfg = dict(_FLAT_CONFIG, langfuse_enabled=False,
                    langfuse_public_key="", langfuse_secret_key="")
         result = get_langfuse_config(_raw_config=cfg)
         assert result["enabled"] is False
 
     def test_auto_enable_when_keys_present_but_flag_false(self):
-        """If keys are set but enabled=False, auto-enable kicks in."""
         cfg = dict(_FLAT_CONFIG, langfuse_enabled=False)
         result = get_langfuse_config(_raw_config=cfg)
-        # Keys are present → auto-enabled
         assert result["enabled"] is True
 
-class TestOrgIdProjectName:
-    """Tests for the new langfuse_org_id and langfuse_project_name config fields.
-
-    Both fields are informational only.  The Langfuse SDK constructor does not
-    accept an org_id kwarg in the installed version, so neither field is passed
-    to Langfuse().  This class verifies correct config-dict presence, value
-    mapping, and that the SDK signature contract holds.
-    """
-
-    def test_org_id_present_in_result(self):
-        """org_id key must be present in the resolved config dict."""
+    def test_org_id_not_in_result(self):
+        """org_id must NOT be present in the resolved config dict (field removed)."""
         result = get_langfuse_config(_raw_config=_FLAT_CONFIG)
-        assert "org_id" in result
+        assert "org_id" not in result
 
-    def test_org_id_value_read_from_flat_key(self):
-        """org_id maps directly from langfuse_org_id flat key."""
+    def test_project_name_not_in_result(self):
+        """project_name must NOT be present in the resolved config dict (field removed)."""
         result = get_langfuse_config(_raw_config=_FLAT_CONFIG)
-        assert result["org_id"] == "org-test-1234"
+        assert "project_name" not in result
 
-    def test_org_id_empty_when_key_absent(self):
-        """org_id defaults to empty string when langfuse_org_id absent from config."""
-        result = get_langfuse_config(_raw_config={})
-        assert result["org_id"] == ""
 
-    def test_org_id_empty_when_explicitly_blank(self):
-        """org_id is empty string when langfuse_org_id is explicitly set to ""."""
-        cfg = dict(_FLAT_CONFIG, langfuse_org_id="")
-        result = get_langfuse_config(_raw_config=cfg)
-        assert result["org_id"] == ""
+# ---------------------------------------------------------------------------
+# A0 framework stubs - allow importing api.langfuse_test without A0 runtime
+# ---------------------------------------------------------------------------
+_helpers_api_stub = _um.MagicMock()
+_helpers_api_stub.ApiHandler = object
+_helpers_api_stub.Request = dict
+_helpers_api_stub.Response = dict
 
-    def test_project_name_present_in_result(self):
-        """project_name key must be present in the resolved config dict."""
-        result = get_langfuse_config(_raw_config=_FLAT_CONFIG)
-        assert "project_name" in result
+sys.modules.setdefault("helpers", _um.MagicMock())
+sys.modules.setdefault("helpers.api", _helpers_api_stub)
+sys.modules.setdefault("helpers.plugins", _um.MagicMock())
 
-    def test_project_name_value_read_from_flat_key(self):
-        """project_name maps directly from langfuse_project_name flat key."""
-        result = get_langfuse_config(_raw_config=_FLAT_CONFIG)
-        assert result["project_name"] == "my-test-project"
+from api.langfuse_test import _resolve_project_info  # noqa: E402
 
-    def test_project_name_empty_when_key_absent(self):
-        """project_name defaults to empty string when key absent from config."""
-        result = get_langfuse_config(_raw_config={})
-        assert result["project_name"] == ""
 
-    def test_sdk_constructor_has_no_org_id_kwarg(self):
-        """Langfuse() SDK constructor must NOT have org_id param in installed version.
+class TestLangfuseTestProjectResolution:
+    """Tests for the /api/public/projects extension in api/langfuse_test.py."""
 
-        This test acts as a forward-compatibility sentinel: if the Langfuse SDK
-        adds org_id in a future version, this test fails and signals that
-        langfuse_helper.py should be updated to pass org_id to the constructor.
-        """
-        import inspect
-        from langfuse import Langfuse
-        sig = inspect.signature(Langfuse.__init__)
-        assert "org_id" not in sig.parameters, (
-            "Langfuse SDK now has an org_id constructor param.  "
-            "Update get_langfuse_client() in langfuse_helper.py to pass "
-            "org_id=config['org_id'] when non-empty."
-        )
+    def test_resolve_success_returns_project_and_org(self):
+        mock_resp = _um.MagicMock()
+        mock_resp.json.return_value = {
+            "data": [{"name": "Default Project", "organization": {"name": "Default Org"}}]
+        }
+        mock_resp.raise_for_status = _um.MagicMock()
+        with _um.patch("httpx.get", return_value=mock_resp):
+            result = _resolve_project_info("pk-lf-test", "sk-lf-test", "http://localhost:3010/")
+        assert result["project"] == "Default Project"
+        assert result["org"] == "Default Org"
 
-    def test_new_keys_do_not_corrupt_existing_fields(self):
-        """Adding org_id/project_name must not alter any pre-existing config field values."""
-        result = get_langfuse_config(_raw_config=_FLAT_CONFIG)
-        assert result["enabled"] is True
-        assert result["public_key"] == "pk-lf-smoke"
-        assert result["secret_key"] == "sk-lf-smoke"
-        assert result["host"] == "http://localhost:3010/"
-        assert result["sample_rate"] == 0.5
-        assert result["service_name"] == "test-service"
-        assert result["environment"] == "testing"
-        assert result["release"] == "v1.0.0"
-        assert result["trace_name_template"] == "{profile}@{model}"
+    def test_resolve_empty_data_returns_empty_strings(self):
+        mock_resp = _um.MagicMock()
+        mock_resp.json.return_value = {"data": []}
+        mock_resp.raise_for_status = _um.MagicMock()
+        with _um.patch("httpx.get", return_value=mock_resp):
+            result = _resolve_project_info("pk-lf-test", "sk-lf-test", "http://localhost:3010/")
+        assert result["project"] == ""
+        assert result["org"] == ""
+
+    def test_resolve_request_exception_returns_empty_strings(self):
+        with _um.patch("httpx.get", side_effect=Exception("connection refused")):
+            result = _resolve_project_info("pk-lf-test", "sk-lf-test", "http://localhost:3010/")
+        assert result["project"] == ""
+        assert result["org"] == ""
+
+    def test_resolve_missing_org_key_returns_empty_org(self):
+        mock_resp = _um.MagicMock()
+        mock_resp.json.return_value = {"data": [{"name": "My Project"}]}
+        mock_resp.raise_for_status = _um.MagicMock()
+        with _um.patch("httpx.get", return_value=mock_resp):
+            result = _resolve_project_info("pk-lf-test", "sk-lf-test", "http://localhost:3010/")
+        assert result["project"] == "My Project"
+        assert result["org"] == ""
+
+    def test_success_response_includes_project_and_org_keys(self):
+        import asyncio
+        from api.langfuse_test import LangfuseTest
+        handler = LangfuseTest()
+        mock_client = _um.MagicMock()
+        mock_client.auth_check.return_value = True
+        mock_client.flush.return_value = None
+        with _um.patch("api.langfuse_test._resolve_project_info",
+                       return_value={"project": "Default Project", "org": "Default Org"}), \
+             _um.patch("langfuse.Langfuse", return_value=mock_client):
+            result = asyncio.run(handler.process(
+                {"public_key": "pk-lf-default", "secret_key": "sk-lf-default",
+                 "host": "http://localhost:3010/"},
+                None
+            ))
+        assert result["success"] is True
+        assert "project" in result
+        assert "org" in result
+        assert result["project"] == "Default Project"
+        assert result["org"] == "Default Org"
+
+    def test_failure_response_has_no_project_or_org_keys(self):
+        import asyncio
+        from api.langfuse_test import LangfuseTest
+        handler = LangfuseTest()
+        mock_client = _um.MagicMock()
+        mock_client.auth_check.return_value = False
+        mock_client.flush.return_value = None
+        with _um.patch("langfuse.Langfuse", return_value=mock_client):
+            result = asyncio.run(handler.process(
+                {"public_key": "pk-lf-default", "secret_key": "sk-lf-default",
+                 "host": "http://localhost:3010/"},
+                None
+            ))
+        assert result["success"] is False
+        assert "project" not in result
+        assert "org" not in result
