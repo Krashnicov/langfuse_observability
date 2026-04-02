@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 import importlib
@@ -27,6 +28,8 @@ from langfuse_helpers.langfuse_helper import (
 )
 from langfuse import LangfuseOtelSpanAttributes
 from agent import Agent, LoopData
+
+_logger = logging.getLogger(__name__)
 
 
 def _build_trace_name(
@@ -91,6 +94,29 @@ def _build_trace_name(
 class LangfuseTraceStart(Extension):
 
     async def execute(self, loop_data: LoopData = LoopData(), **kwargs):
+        # Defensive wrapper — any SDK/OTel exception MUST NOT propagate to
+        # monologue().  If it did, monologue()'s outer try/except would call
+        # handle_exception() which restarts the loop with a fresh LoopData;
+        # downstream extensions then find no lf_trace and create orphan spans,
+        # or create observations with no root trace (Bug 1 symptom for chat
+        # a6QptOXY and similar).  On failure we mark lf_sampled=False so every
+        # downstream extension skips gracefully.
+        try:
+            await self._execute_inner(loop_data)
+        except Exception as exc:
+            _logger.warning(
+                "[langfuse] trace creation failed — sampling disabled for this "
+                "monologue: %s",
+                exc,
+                exc_info=True,
+            )
+            loop_data.params_persistent["lf_sampled"] = False
+            loop_data.params_persistent.pop("lf_trace", None)
+            loop_data.params_persistent.pop("lf_root_trace", None)
+            loop_data.params_persistent.pop("lf_project_name", None)
+
+    async def _execute_inner(self, loop_data: LoopData) -> None:
+        """Core trace-creation logic — called from execute() inside a try/except."""
         client = get_langfuse_client(self.agent)
         if not client:
             return
