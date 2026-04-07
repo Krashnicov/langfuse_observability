@@ -15,7 +15,7 @@ Satisfies: AC-2.1, AC-2.2, AC-2.3, AC-2.4, AC-2.5, AC-2.6
 import os
 import sys
 import unittest
-from unittest.mock import MagicMock, patch, sentinel
+from unittest.mock import MagicMock, mock_open, patch, sentinel
 
 # sys.path injection — same pattern as langfuse_client.py
 _PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -171,33 +171,55 @@ class TestListTraces(unittest.TestCase):
             api.get_prompt('my-prompt')
         self.assertIn('Phase 3', str(ctx.exception))  # AC-2.6
 
-    def test_phase4_list_scores_raises_not_implemented(self):
-        """AC-2.6: list_scores raises NotImplementedError with Phase 4 label."""
-        api = self._make_api()
-        with self.assertRaises(NotImplementedError) as ctx:
-            api.list_scores()
-        self.assertIn('Phase 4', str(ctx.exception))  # AC-2.6
+    def test_phase4_list_scores_now_implemented(self):
+        """STORY-007: list_scores now implemented — must NOT raise NotImplementedError."""
+        # Use __new__ bypass — no real SDK singleton needed
+        api = LangfuseObservabilityAPI.__new__(LangfuseObservabilityAPI)
+        api._client = MagicMock()
+        api._timeout = LangfuseObservabilityAPI.DEFAULT_TIMEOUT
+        try:
+            api.list_scores()  # AC-7.1: stub replaced — no NotImplementedError
+        except NotImplementedError:
+            self.fail("list_scores still raises NotImplementedError — stub not replaced")
 
-    def test_phase4_create_score_raises_not_implemented(self):
-        """AC-2.6: create_score raises NotImplementedError with Phase 4 label."""
-        api = self._make_api()
-        with self.assertRaises(NotImplementedError) as ctx:
-            api.create_score()
-        self.assertIn('Phase 4', str(ctx.exception))  # AC-2.6
+    def test_phase4_create_score_now_implemented(self):
+        """STORY-007: create_score now implemented — uses HTTP POST, not NotImplementedError."""
+        import json as _json
+        api = LangfuseObservabilityAPI.__new__(LangfuseObservabilityAPI)
+        api._client = MagicMock()
+        api._timeout = LangfuseObservabilityAPI.DEFAULT_TIMEOUT
+        fake_cfg = _json.dumps({
+            "langfuse_host": "http://localhost:3010",
+            "langfuse_public_key": "pk-test",
+            "langfuse_secret_key": "sk-test",
+        })
 
-    def test_phase5_list_datasets_raises_not_implemented(self):
-        """AC-2.6: list_datasets raises NotImplementedError with Phase 5 label."""
-        api = self._make_api()
-        with self.assertRaises(NotImplementedError) as ctx:
-            api.list_datasets()
-        self.assertIn('Phase 5', str(ctx.exception))  # AC-2.6
+        class _OKResp:
+            status_code = 200; ok = True; text = ""
+            def json(self): return {"id": "sc-test"}
 
-    def test_phase5_get_dataset_raises_not_implemented(self):
-        """AC-2.6: get_dataset raises NotImplementedError with Phase 5 label."""
+        with patch('builtins.open', mock_open(read_data=fake_cfg)):
+            with patch('requests.post', return_value=_OKResp()):
+                try:
+                    api.create_score(name='test', value=1.0, trace_id='t1')  # AC-7.3
+                except NotImplementedError:
+                    self.fail("create_score still raises NotImplementedError — stub not replaced")
+
+    def test_phase3_list_datasets_now_implemented(self):
+        """AC-13.1: list_datasets no longer raises NotImplementedError — Phase 3 implemented."""
         api = self._make_api()
-        with self.assertRaises(NotImplementedError) as ctx:
-            api.get_dataset('my-dataset')
-        self.assertIn('Phase 5', str(ctx.exception))  # AC-2.6
+        try:
+            api.list_datasets()  # AC-13.1: delegates to _sdk_call, no NotImplementedError
+        except NotImplementedError:
+            self.fail("list_datasets still raises NotImplementedError — stub not replaced")
+
+    def test_phase3_get_dataset_now_implemented(self):
+        """AC-13.2: get_dataset no longer raises NotImplementedError — Phase 3 implemented."""
+        api = self._make_api()
+        try:
+            api.get_dataset('my-dataset')  # AC-13.2: delegates to _sdk_call, no NotImplementedError
+        except NotImplementedError:
+            self.fail("get_dataset still raises NotImplementedError — stub not replaced")
 
     def test_phase6_batch_ingest_raises_not_implemented(self):
         """AC-2.6: batch_ingest raises NotImplementedError with Phase 6 label."""
